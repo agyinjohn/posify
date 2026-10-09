@@ -5,6 +5,12 @@ import { Field, Modal, useToast } from '../ui.jsx';
 
 const ROLE_CLASS = { owner: 'badge-green', cashier: 'badge-amber' };
 
+function EyeIcon({ open }) {
+  return open
+    ? <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg>
+    : <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/><line x1="2" y1="2" x2="18" y2="18"/></svg>;
+}
+
 export default function Users() {
   const { user: me } = useAuth();
   const toast = useToast();
@@ -83,6 +89,7 @@ function UserForm({ u, self, onClose, onSaved }) {
   const toast = useToast();
   const isNew = !u._id;
   const [f, setF] = useState({ name: u.name, username: u.username, role: u.role, password: '' });
+  const [showPw, setShowPw] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = async (e) => {
     e.preventDefault();
@@ -104,7 +111,12 @@ function UserForm({ u, self, onClose, onSaved }) {
           </select>
         </Field>
         <Field label={isNew ? 'Password' : 'New password (leave blank to keep)'} hint="At least 8 characters">
-          <input type="password" value={f.password} onChange={set('password')} required={isNew} minLength={8} autoComplete="new-password" />
+          <div className="pw-wrap">
+            <input type={showPw ? 'text' : 'password'} value={f.password} onChange={set('password')} required={isNew} minLength={8} autoComplete="new-password" />
+            <button type="button" className="pw-eye" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? 'Hide password' : 'Show password'}>
+              <EyeIcon open={showPw} />
+            </button>
+          </div>
         </Field>
         <div className="actions"><button className="primary">Save user</button></div>
       </form>

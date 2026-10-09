@@ -2,12 +2,19 @@ import { useState } from 'react';
 import { useAuth } from '../auth.jsx';
 import { SHOP_NAME } from '../format.js';
 
+function EyeIcon({ open }) {
+  return open
+    ? <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg>
+    : <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/><line x1="2" y1="2" x2="18" y2="18"/></svg>;
+}
+
 export default function Login() {
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -89,8 +96,13 @@ export default function Login() {
           </div>
           <div className="login-field">
             <span>Password</span>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password" required placeholder="••••••••" />
+            <div className="pw-wrap">
+              <input type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password" required placeholder="••••••••" />
+              <button type="button" className="pw-eye" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? 'Hide password' : 'Show password'}>
+                <EyeIcon open={showPw} />
+              </button>
+            </div>
           </div>
           {error && <div className="login-error" role="alert">{error}</div>}
           <button className="login-btn" disabled={busy}>

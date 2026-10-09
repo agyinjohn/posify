@@ -15,6 +15,7 @@ export default function Customers() {
   const [edit, setEdit] = useState(null);
   const [paying, setPaying] = useState(null);
   const [statement, setStatement] = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(() => {
     const key = `/customers?q=${encodeURIComponent(q)}${owing ? '&owing=1' : ''}`;
@@ -37,7 +38,12 @@ export default function Customers() {
           <label className="check"><input type="checkbox" checked={owing} onChange={(e) => setOwing(e.target.checked)} /> Owing only</label>
           {owingCount > 0 && <span className="chip chip-red">{owingCount} owing · {fmt(totalOwed)}</span>}
         </div>
-        {isOwner && <button className="primary" onClick={() => setEdit({ name: '', phone: '', creditLimit: 0 })}>Add customer</button>}
+        {isOwner && (
+          <div style={{ display: 'flex', gap: '.5rem' }}>
+            <button onClick={() => setShowImport(true)}>Import CSV</button>
+            <button className="primary" onClick={() => setEdit({ name: '', phone: '', creditLimit: 0 })}>Add customer</button>
+          </div>
+        )}
       </div>
 
       <div className="tablewrap">
@@ -71,6 +77,7 @@ export default function Customers() {
       {edit && <CustomerForm c={edit} isOwner={isOwner} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
       {paying && <PayForm c={paying} onClose={() => setPaying(null)} onSaved={() => { setPaying(null); load(); }} />}
       {statement && <StatementModal c={statement} onClose={() => setStatement(null)} />}
+      {showImport && <CsvImportModal onClose={() => setShowImport(false)} onSaved={() => { setShowImport(false); load(); }} />}
     </div>
   );
 }
@@ -90,7 +97,7 @@ function CustomerForm({ c, isOwner, onClose, onSaved }) {
       <form onSubmit={save}>
         <Field label="Name"><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></Field>
         <Field label="Phone"><input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
-        {isOwner && <Field label="Credit limit (GH₵)" hint="0 means no limit"><input type="number" min="0" step="0.01" value={f.creditLimit} onChange={(e) => setF({ ...f, creditLimit: e.target.value })} /></Field>}
+        {isOwner && <Field label="Credit limit (GH₵)" hint="Max amount this customer can owe on credit. 0 means no limit."><input type="number" min="0" step="0.01" value={f.creditLimit} onChange={(e) => setF({ ...f, creditLimit: e.target.value })} /></Field>}
         <div className="actions"><button className="primary">Save customer</button></div>
       </form>
     </Modal>
@@ -175,6 +182,76 @@ function StatementModal({ c, onClose }) {
             </tbody>
           </table>
         </div>
+      )}
+    </Modal>
+  );
+}
+
+function CsvImportModal({ onClose, onSaved }) {
+  const toast = useToast();
+  const [rows, setRows] = useState([]); // parsed preview rows
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const parseFile = (file) => {
+    setError('');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const lines = e.target.result.split('\n').map((l) => l.trim()).filter(Boolean);
+      // Skip header if first cell looks like "name"
+      const start = lines[0]?.toLowerCase().startsWith('name') ? 1 : 0;
+      const parsed = lines.slice(start).map((line) => {
+        const [name, phone = '', creditLimit = '0'] = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+        return { name, phone, creditLimit: Number(creditLimit) || 0 };
+      }).filter((r) => r.name);
+      if (parsed.length === 0) { setError('No valid rows found. Expected columns: name, phone, creditLimit'); return; }
+      setRows(parsed);
+    };
+    reader.readAsText(file);
+  };
+
+  const submit = async () => {
+    setBusy(true);
+    let ok = 0, fail = 0;
+    for (const r of rows) {
+      try { await api('/customers', { method: 'POST', body: r }); ok++; }
+      catch { fail++; }
+    }
+    setBusy(false);
+    toast(`${ok} imported${fail > 0 ? `, ${fail} failed` : ''}`, fail > 0 ? 'err' : 'ok');
+    onSaved();
+  };
+
+  return (
+    <Modal title="Import customers from CSV" onClose={onClose}>
+      <p className="hint">CSV columns: <code>name, phone, creditLimit</code>. Phone and credit limit are optional. First row can be a header.</p>
+      <Field label="Choose CSV file">
+        <input type="file" accept=".csv,text/csv" onChange={(e) => e.target.files[0] && parseFile(e.target.files[0])} />
+      </Field>
+      {error && <div className="error">{error}</div>}
+      {rows.length > 0 && (
+        <>
+          <p className="hint">{rows.length} customer{rows.length !== 1 ? 's' : ''} ready to import:</p>
+          <div className="tablewrap" style={{ maxHeight: 240, overflowY: 'auto' }}>
+            <table>
+              <thead><tr><th>Name</th><th>Phone</th><th className="num">Credit limit</th></tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td>{r.name}</td>
+                    <td className="muted-cell">{r.phone || '–'}</td>
+                    <td className="num muted-cell">{r.creditLimit ? fmt(r.creditLimit) : 'No limit'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="actions">
+            <button className="primary" disabled={busy} onClick={submit}>
+              {busy ? 'Importing…' : `Import ${rows.length} customer${rows.length !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </>
       )}
     </Modal>
   );

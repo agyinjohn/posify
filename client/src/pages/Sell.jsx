@@ -23,6 +23,7 @@ export default function Sell() {
   const [holdLabel, setHoldLabel] = useState('');
   const [showHold, setShowHold] = useState(false);
   const [showResume, setShowResume] = useState(false);
+  const [heldCount, setHeldCount] = useState(0);
   const [shift, setShift] = useState(undefined);
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
@@ -47,7 +48,11 @@ export default function Sell() {
     api('/customers').then(setCustomers).catch(() => {});
   }, [toast]);
 
-  useEffect(() => { load(); loadShift(); searchRef.current?.focus(); }, [load, loadShift]);
+  const loadHeldCount = useCallback(() => {
+    api('/held-sales').then((l) => setHeldCount(l.length)).catch(() => {});
+  }, []);
+
+  useEffect(() => { load(); loadShift(); loadHeldCount(); searchRef.current?.focus(); }, [load, loadShift, loadHeldCount]);
 
   const byId = useMemo(() => new Map(products.map((p) => [p._id, p])), [products]);
   const priceOf = useCallback((p) => (mode === 'wholesale' && p.wholesalePrice > 0 ? p.wholesalePrice : p.retailPrice), [mode]);
@@ -111,6 +116,7 @@ export default function Sell() {
       });
       toast('Sale held');
       setCart([]); setOrderDiscount(''); setQ(''); setHoldLabel(''); setShowHold(false);
+      loadHeldCount();
     } catch (e) { toast(e.message, 'err'); }
   };
 
@@ -119,6 +125,7 @@ export default function Sell() {
     setOrderDiscount(String(held.orderDiscount || ''));
     setCart(held.items.map((i) => ({ id: String(i.productId), qty: i.qty, discount: i.discount || '' })));
     setShowResume(false);
+    loadHeldCount();
   };
 
   const pendingCount = queue.filter((i) => i.status === 'pending').length;
@@ -208,7 +215,9 @@ export default function Sell() {
           </span>
           <div className="cart-actions">
             <button disabled={lines.length === 0} onClick={() => setShowHold(true)}>Hold</button>
-            <button onClick={() => setShowResume(true)}>Resume</button>
+            <button onClick={() => setShowResume(true)} style={{ position: 'relative' }}>
+              Resume{heldCount > 0 && <span className="held-badge">{heldCount}</span>}
+            </button>
           </div>
         </div>
 
@@ -365,7 +374,7 @@ function ResumeDrawer({ onClose, onResume }) {
 
 function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded }) {
   const toast = useToast();
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState([{ method: 'Cash', amount: String(total) }]);
   const [customerId, setCustomerId] = useState('');
   const [busy, setBusy] = useState(false);
   const [newName, setNewName] = useState('');
