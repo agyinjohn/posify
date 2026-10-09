@@ -11,19 +11,19 @@ export default function Sell() {
   const toast = useToast();
   const { isOwner } = useAuth();
   const { online, queue } = useOfflineSync();
-  const [cacheAge, setCacheAge] = useState(null); // ISO string of last cache write
+  const [cacheAge, setCacheAge] = useState(null);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [q, setQ] = useState('');
   const [mode, setMode] = useState('retail');
-  const [cart, setCart] = useState([]); // { id, qty, discount }
+  const [cart, setCart] = useState([]);
   const [orderDiscount, setOrderDiscount] = useState('');
   const [paying, setPaying] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [holdLabel, setHoldLabel] = useState('');
   const [showHold, setShowHold] = useState(false);
   const [showResume, setShowResume] = useState(false);
-  const [shift, setShift] = useState(undefined); // undefined = loading, null = none open
+  const [shift, setShift] = useState(undefined);
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const searchRef = useRef(null);
@@ -34,7 +34,6 @@ export default function Sell() {
 
   const load = useCallback(async () => {
     if (!navigator.onLine) {
-      // Offline: serve products from IndexedDB cache.
       const cached = await getCachedProducts();
       if (cached) { setProducts(cached.data); setCacheAge(cached.cachedAt); }
       return;
@@ -43,10 +42,11 @@ export default function Sell() {
       const ps = await api('/products');
       setProducts(ps);
       setCacheAge(null);
-      cacheProducts(ps).catch(() => {}); // fire-and-forget
+      cacheProducts(ps).catch(() => {});
     } catch (e) { toast(e.message, 'err'); }
     api('/customers').then(setCustomers).catch(() => {});
   }, [toast]);
+
   useEffect(() => { load(); loadShift(); searchRef.current?.focus(); }, [load, loadShift]);
 
   const byId = useMemo(() => new Map(products.map((p) => [p._id, p])), [products]);
@@ -75,7 +75,6 @@ export default function Sell() {
     if (p.stock <= 0) return toast(`${p.name} is out of stock`, 'err');
     setCart((c) => {
       const hit = c.find((l) => l.id === p._id);
-      // Default to pack unit if the product has one
       const defaultUnit = p.unitsPerPack > 1 ? 'pack' : 'piece';
       if (!hit) return [...c, { id: p._id, qty: 1, discount: '', unit: defaultUnit }];
       if (hit.qty + 1 > p.stock) { toast(`Only ${qtyFmt(p.stock)} of ${p.name} in stock`, 'err'); return c; }
@@ -85,7 +84,6 @@ export default function Sell() {
   const setLine = (id, patch) => setCart((c) => c.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const remove = (id) => setCart((c) => c.filter((l) => l.id !== id));
 
-  // Barcode scanners type the code and press Enter.
   const onSearchKey = (e) => {
     if (e.key !== 'Enter') return;
     const t = q.trim().toLowerCase();
@@ -123,117 +121,178 @@ export default function Sell() {
     setShowResume(false);
   };
 
+  const pendingCount = queue.filter((i) => i.status === 'pending').length;
+  const failedCount = queue.filter((i) => i.status === 'error').length;
+
   return (
     <div className="sell">
-      {/* Shift banner */}
-      {shift === null && (
-        <div className="notice warn">
-          No shift is open.{' '}
-          <button className="primary" onClick={() => setShowOpenShift(true)}>Open shift</button>
-        </div>
-      )}
-      {shift && (
-        <div className="notice">
-          Shift open since {dateTime(shift.createdAt)} by {shift.openedBy?.name ?? shift.openedByName}.{' '}
-          <button onClick={() => setShowCloseShift(true)}>Close shift</button>
-        </div>
-      )}
-      {/* Offline banner */}
-      {!online && (
-        <div className="notice warn">
-          <strong>Offline</strong> — sales will be queued and synced when you reconnect.
-          {cacheAge && <> Products loaded from cache ({dateTime(cacheAge)}).</>}
-        </div>
-      )}
-      {online && queue.length > 0 && (
-        <div className="notice">
-          {queue.filter((q) => q.status === 'pending').length} sale(s) syncing…
-          {queue.filter((q) => q.status === 'error').length > 0 && (
-            <> · <strong className="owes">{queue.filter((q) => q.status === 'error').length} failed</strong> — check the queue panel.</>
-          )}
-        </div>
-      )}
+
+      {/* ── Banners ── */}
+      <div className="sell-banners">
+        {shift === null && (
+          <div className="sell-banner warn">
+            No shift is open.{' '}
+            <button onClick={() => setShowOpenShift(true)}>Open shift</button>
+          </div>
+        )}
+        {shift && (
+          <div className="sell-banner info">
+            Shift open since {dateTime(shift.createdAt)} · {shift.openedBy?.name ?? shift.openedByName}{' '}
+            <button onClick={() => setShowCloseShift(true)}>Close shift</button>
+          </div>
+        )}
+        {!online && (
+          <div className="sell-banner warn">
+            <strong>Offline</strong> — sales are queued locally.
+            {cacheAge && <> Products from cache ({dateTime(cacheAge)}).</>}
+          </div>
+        )}
+        {online && queue.length > 0 && (
+          <div className={`sell-banner ${failedCount > 0 ? 'warn' : 'info'}`}>
+            {pendingCount > 0 && <>{pendingCount} sale(s) syncing…</>}
+            {failedCount > 0 && <> · <strong>{failedCount} failed</strong> — check the queue panel.</>}
+          </div>
+        )}
+      </div>
+
+      {/* ── Catalog ── */}
       <section className="catalog">
-        <div className="bar">
-          <input ref={searchRef} className="search" placeholder="Scan barcode or search name / SKU" value={q}
-            onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} aria-label="Search products" />
-          <div className="seg" role="group" aria-label="Sale type">
+        <div className="catalog-top">
+          <input
+            ref={searchRef}
+            className="sell-search"
+            placeholder="🔍  Scan barcode or search name / SKU"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onSearchKey}
+            aria-label="Search products"
+          />
+          <div className="seg sell-seg" role="group" aria-label="Sale type">
             {['retail', 'wholesale'].map((m) => (
-              <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{m === 'retail' ? 'Retail' : 'Wholesale'}</button>
+              <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+                {m === 'retail' ? 'Retail' : 'Wholesale'}
+              </button>
             ))}
           </div>
         </div>
+
         <ul className="plist">
           {results.map((p) => (
             <li key={p._id}>
               <button disabled={p.stock <= 0} onClick={() => add(p)}>
-                <span className="pname">{p.name}<small>{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack} pcs/${p.packLabel || 'pack'}` : ''}</small></span>
-                <span className={`stock${p.stock <= p.reorderLevel ? ' low' : ''}`}>{p.stock <= 0 ? 'Out of stock' : `${qtyFmt(p.stock)} left`}</span>
-                <span className="price">{fmt(priceOf(p))}</span>
+                {p.image?.url && <img className="pcard-img" src={p.image.url} alt="" />}
+                <span className="pname">
+                  {p.name}
+                  <small>{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack}/${p.packLabel || 'pack'}` : ''}</small>
+                </span>
+                <span className="pcard-footer">
+                  <span className={`stock${p.stock <= p.reorderLevel ? ' low' : ''}`}>
+                    {p.stock <= 0 ? 'Out of stock' : `${qtyFmt(p.stock)} left`}
+                  </span>
+                  <span className="price">{fmt(priceOf(p))}</span>
+                </span>
               </button>
             </li>
           ))}
-          {results.length === 0 && <li className="empty">No products match “{q}”.</li>}
+          {results.length === 0 && (
+            <li className="plist-empty">No products match "{q}".</li>
+          )}
         </ul>
       </section>
 
+      {/* ── Cart ── */}
       <aside className="cart">
+        <div className="cart-header">
+          <span className="cart-title">
+            Cart{lines.length > 0 && <span className="cart-count">{lines.length}</span>}
+          </span>
+          <div className="cart-actions">
+            <button disabled={lines.length === 0} onClick={() => setShowHold(true)}>Hold</button>
+            <button onClick={() => setShowResume(true)}>Resume</button>
+          </div>
+        </div>
+
         <div className="lines">
-          {lines.length === 0 && <p className="empty">Cart is empty. Scan or tap a product to start the sale.</p>}
+          {lines.length === 0 && (
+            <div className="cart-empty">
+              <span className="cart-empty-icon">🛒</span>
+              <p>Cart is empty</p>
+              <small>Scan or tap a product to start</small>
+            </div>
+          )}
           {lines.map((l) => (
             <div className="line" key={l.id}>
-              <div className="top"><strong>{l.p.name}</strong><button className="ghost" onClick={() => remove(l.id)} aria-label={`Remove ${l.p.name}`}>Remove</button></div>
-              <div className="ctrl">
+              <div className="line-top">
+                <span className="line-name">{l.p.name}</span>
+                <button className="line-remove" onClick={() => remove(l.id)} aria-label={`Remove ${l.p.name}`}>×</button>
+              </div>
+              <div className={`line-ctrl${l.hasPack ? ' has-pack' : ''}`}>
                 {l.hasPack && (
                   <div className="seg" role="group" aria-label="Unit">
                     <button className={l.unit === 'pack' ? 'on' : ''} onClick={() => setLine(l.id, { unit: 'pack', qty: 1 })}>{l.p.packLabel || 'pack'}</button>
                     <button className={l.unit === 'piece' ? 'on' : ''} onClick={() => setLine(l.id, { unit: 'piece', qty: 1 })}>pcs</button>
                   </div>
                 )}
-                <input type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
-                  onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, l.unit === 'pack' ? Math.floor(l.p.stock / l.p.unitsPerPack) : l.p.stock) })} />
-                {l.hasPack && l.unit === 'pack' && <small>= {qtyFmt(l.pieceQty)} pcs</small>}
-                <span>× {fmt(l.price)}</span>
-                <input type="number" min="0" step="0.01" placeholder="Discount" value={l.discount} aria-label="Line discount"
-                  onChange={(e) => setLine(l.id, { discount: e.target.value })} />
-                <b>{fmt(l.total)}</b>
+                <input
+                  type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
+                  onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, l.unit === 'pack' ? Math.floor(l.p.stock / l.p.unitsPerPack) : l.p.stock) })}
+                />
+                <span className="line-meta">{fmt(l.price)} × {l.qty}</span>
+                <strong className="line-total">{fmt(l.total)}</strong>
               </div>
+              {l.hasPack && l.unit === 'pack' && (
+                <div className="line-pack-hint">= {qtyFmt(l.pieceQty)} pcs</div>
+              )}
             </div>
           ))}
         </div>
+
         <div className="totals">
-          <div className="row"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
-          <div className="row"><span>Order discount</span>
-            <input type="number" min="0" step="0.01" value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} aria-label="Order discount" /></div>
-          <div className="grand"><span>Total</span><strong>{fmt(total)}</strong></div>
-          <div className="hold-row">
-            <button disabled={lines.length === 0} onClick={() => setShowHold(true)}>Hold sale</button>
-            <button onClick={() => setShowResume(true)}>Resume held</button>
+          <div className="totals-row"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
+          <div className="totals-row">
+            <span>Discount</span>
+            <input
+              type="number" min="0" step="0.01" value={orderDiscount}
+              onChange={(e) => setOrderDiscount(e.target.value)} aria-label="Order discount"
+            />
           </div>
-          <button className="primary big" disabled={total <= 0 || lines.some((l) => l.qty <= 0)} onClick={() => setPaying(true)}>Take payment</button>
+          <div className="totals-grand">
+            <span>Total</span>
+            <strong>{fmt(total)}</strong>
+          </div>
+          <button
+            className="pay-btn"
+            disabled={total <= 0 || lines.some((l) => l.qty <= 0)}
+            onClick={() => setPaying(true)}
+          >
+            Charge {total > 0 ? fmt(total) : ''}
+          </button>
         </div>
       </aside>
 
+      {/* ── Modals ── */}
       {paying && (
-        <PayModal total={total} customers={customers} onClose={() => setPaying(false)} onCustomerAdded={(c) => setCustomers((s) => [...s, c])}
+        <PayModal
+          total={total} customers={customers}
+          onClose={() => setPaying(false)}
+          onCustomerAdded={(c) => setCustomers((s) => [...s, c])}
           build={(payments, customerId) => ({
             items: lines.map((l) => ({ productId: l.id, qty: l.qty, unit: l.unit, discount: l.discount || 0 })),
             mode, orderDiscount: od, payments, customerId: customerId || undefined,
           })}
-          onDone={done} />
+          onDone={done}
+        />
       )}
       {receipt && (
         <Modal title={receipt._offlineQueued ? 'Sale queued (offline)' : 'Sale complete'} onClose={() => setReceipt(null)}>
-          {receipt._offlineQueued
-            ? (
-              <>
-                <div className="notice warn">
-                  <strong>You are offline.</strong> This sale has been saved locally as <strong>{receipt.receiptNo}</strong> and will be sent to the server automatically when you reconnect.
-                </div>
-                <p className="hint">Do not close the app until the sale has synced.</p>
-              </>
-            )
-            : <Receipt sale={receipt} />}
+          {receipt._offlineQueued ? (
+            <>
+              <div className="notice warn">
+                <strong>You are offline.</strong> This sale has been saved locally as <strong>{receipt.receiptNo}</strong> and will sync automatically when you reconnect.
+              </div>
+              <p className="hint">Do not close the app until the sale has synced.</p>
+            </>
+          ) : <Receipt sale={receipt} />}
           <div className="actions">
             {!receipt._offlineQueued && <button className="primary" onClick={() => window.print()}>Print receipt</button>}
             <button onClick={() => setReceipt(null)}>New sale</button>
@@ -246,14 +305,10 @@ export default function Sell() {
           <label className="field"><span>Label (optional)</span>
             <input placeholder="e.g. Customer name" value={holdLabel} onChange={(e) => setHoldLabel(e.target.value)} />
           </label>
-          <div className="actions">
-            <button className="primary" onClick={holdSale}>Hold sale</button>
-          </div>
+          <div className="actions"><button className="primary" onClick={holdSale}>Hold sale</button></div>
         </Modal>
       )}
-      {showResume && (
-        <ResumeDrawer onClose={() => setShowResume(false)} onResume={resumeSale} />
-      )}
+      {showResume && <ResumeDrawer onClose={() => setShowResume(false)} onResume={resumeSale} />}
       {showOpenShift && (
         <OpenShiftModal onClose={() => setShowOpenShift(false)} onOpened={(s) => { setShift(s); setShowOpenShift(false); }} />
       )}
@@ -310,7 +365,7 @@ function ResumeDrawer({ onClose, onResume }) {
 
 function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded }) {
   const toast = useToast();
-  const [rows, setRows] = useState([]); // { method, amount }
+  const [rows, setRows] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [busy, setBusy] = useState(false);
   const [newName, setNewName] = useState('');
