@@ -573,8 +573,8 @@ tr.sum td { font-weight: 800; background: #F7F8FA; }
   letter-spacing: .02em;
 }
 
-.login-field .pw-wrap .pw-eye { color: #4A5A6A; }
-.login-field .pw-wrap .pw-eye:hover { color: #9BAAB8; background: none; }
+.login-field .pw-wrap .pw-eye { color: #6B8099; }
+.login-field .pw-wrap .pw-eye:hover { color: #E9EDF1; background: none; }
 
 /* Right form panel */
 .login-panel {
