@@ -1,0 +1,27 @@
+# backup.cron — example crontab entries for automated POS backups.
+#
+# Install with:
+#   crontab -e
+# then paste the lines below (adjust paths).
+#
+# Test the script manually first:
+#   MONGODB_URI="mongodb://..." bash /path/to/server/scripts/backup.sh
+
+# Required: tell cron where mongodump lives (check with: which mongodump)
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# Required: set your MongoDB connection string.
+# On a VPS you can also put this in /etc/environment or a systemd drop-in.
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/<dbname>
+
+# Optional overrides (uncomment to change defaults):
+# BACKUP_DIR=/var/backups/pos
+# RETAIN_DAYS=30
+
+# ── Schedules ─────────────────────────────────────────────────────────────────
+
+# Daily at 02:00 UTC — keeps 14 days by default.
+0 2 * * * bash /path/to/server/scripts/backup.sh >> /var/log/pos-backup.log 2>&1
+
+# Weekly full backup on Sunday at 03:00 UTC to a separate directory.
+# 0 3 * * 0 BACKUP_DIR=/var/backups/pos-weekly RETAIN_DAYS=90 bash /path/to/server/scripts/backup.sh >> /var/log/pos-backup-weekly.log 2>&1

@@ -1,0 +1,29 @@
+{
+  "name": "pos-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop wrapper for the Shop POS web app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.shoppos.desktop",
+    "productName": "Shop POS",
+    "files": ["main.js", "offline.html", "config.default.json"],
+    "win": { "target": "nsis" },
+    "publish": {
+      "provider": "github",
+      "owner": "YOUR_GITHUB_USERNAME",
+      "repo": "shop-pos"
+    }
+  }
+}
