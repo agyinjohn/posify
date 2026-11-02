@@ -5,7 +5,7 @@ import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { dateTime, fmt, qtyFmt } from '../format.js';
 
 const MOVE_TYPE_CLASS = {
-  sale: 'badge-red', void: 'badge-amber', receipt: 'badge-green',
+  sale: 'badge-red', void: 'badge-amber', return: 'badge-amber', receipt: 'badge-green',
   adjustment: 'badge-amber', opening: 'badge-green', stocktake: 'badge-amber',
 };
 const TABS = [['receive', 'Receive stock'], ['adjust', 'Adjust stock'], ['stocktake', 'Stock take'], ['history', 'History']];

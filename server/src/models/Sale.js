@@ -42,6 +42,11 @@ const schema = new mongoose.Schema(
     voidReason: String,
     voidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     voidedAt: Date,
+    // Returns bookkeeping. creditReturned = part of the unpaid balance cancelled by returns;
+    // refundedTotal = money handed back. rev guards concurrent returns (optimistic lock).
+    creditReturned: { type: Number, default: 0 },
+    refundedTotal: { type: Number, default: 0 },
+    rev: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

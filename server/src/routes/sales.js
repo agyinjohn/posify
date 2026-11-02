@@ -3,12 +3,15 @@ import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import Customer from '../models/Customer.js';
 import StockMovement from '../models/StockMovement.js';
+import Refund from '../models/Refund.js';
 import { nextReceiptNo } from '../models/Counter.js';
 import { requireAuth, requireOwner } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { assertId, dayRange, num } from '../lib/validate.js';
-import { r2 } from '../lib/money.js';
+import { PAYMENT_METHODS, r2, r3 } from '../lib/money.js';
 import { priceSale, settlePayments, SaleError } from '../lib/pricing.js';
+import { planReturn } from '../lib/returns.js';
+import { audit } from '../lib/audit.js';
 import { adjustBalance } from '../lib/balance.js';
 import { config } from '../config.js';
 
@@ -120,86 +123,138 @@ router.get('/:id', asyncHandler(async (req, res) => {
   res.json(serialize(sale, req.user));
 }));
 
-// Void: owner only. Status flips atomically first so a sale can never be voided twice.
-router.post('/:id/void', requireOwner, asyncHandler(async (req, res) => {
-  assertId(req.params.id);
-  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
-  if (reason.length < 3) throw new SaleError('Give a reason for voiding this sale');
+const OPEN_STATUSES = ['completed', 'partial-return'];
 
-  const sale = await Sale.findOneAndUpdate(
-    { _id: req.params.id, status: 'completed' },
-    { status: 'voided', voidReason: reason.slice(0, 200), voidedBy: req.user._id, voidedAt: new Date() },
+function readReason(body, what) {
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+  if (reason.length < 3) throw new SaleError(`Give a reason for ${what}`);
+  return reason.slice(0, 200);
+}
+
+function readRefundMethod(body) {
+  const method = body.refundMethod ?? 'Cash';
+  if (!PAYMENT_METHODS.includes(method)) throw new SaleError('Choose a valid refund method');
+  return method;
+}
+
+/**
+ * Shared by void and partial return (a void is a return of everything left).
+ * Standalone MongoDB has no transactions, so the sale is claimed first with an optimistic
+ * lock (rev): two concurrent requests cannot both return the same items. Every later step
+ * is recorded with an undo, and a failure part-way rolls the earlier steps back.
+ */
+async function applyReturn({ sale, plan, reason, user, refundMethod, isVoid }) {
+  const undo = [];
+  const rollback = async () => {
+    for (const fn of undo.reverse()) await fn().catch(() => {});
+  };
+
+  const set = { status: plan.fullyReturned ? 'voided' : 'partial-return' };
+  const oldSet = { status: sale.status };
+  for (const u of plan.updates) {
+    set[`items.${u.index}.returnedQty`] = u.returnedQty;
+    oldSet[`items.${u.index}.returnedQty`] = sale.items[u.index].returnedQty || 0;
+  }
+  if (plan.fullyReturned) Object.assign(set, { voidReason: reason, voidedBy: user._id, voidedAt: new Date() });
+
+  const rev = sale.rev || 0;
+  const claimed = await Sale.findOneAndUpdate(
+    { _id: sale._id, status: { $in: OPEN_STATUSES }, ...(rev ? { rev } : { $or: [{ rev: 0 }, { rev: { $exists: false } }] }) },
+    { $set: set, $inc: { rev: 1, creditReturned: plan.creditReduction, refundedTotal: plan.cashRefund } },
     { new: true },
   );
+  if (!claimed) throw new SaleError('This sale was just changed by someone else. Reload and try again', 409);
+  undo.push(() => Sale.updateOne(
+    { _id: sale._id },
+    {
+      $set: oldSet,
+      $unset: plan.fullyReturned ? { voidReason: '', voidedBy: '', voidedAt: '' } : {},
+      $inc: { creditReturned: -plan.creditReduction, refundedTotal: -plan.cashRefund },
+    },
+  ));
+
+  let { creditReduction, cashRefund } = plan;
+  try {
+    for (const u of plan.updates) {
+      await Product.updateOne({ _id: u.productId }, { $inc: { stock: u.qty } });
+      undo.push(() => Product.updateOne({ _id: u.productId, stock: { $gte: u.qty } }, { $inc: { stock: -u.qty } }));
+    }
+
+    const movements = await StockMovement.insertMany(plan.updates.map((u) => ({
+      product: u.productId, type: isVoid ? 'void' : 'return', qty: u.qty, costPrice: u.costPrice, sale: sale._id,
+      reason: `${isVoid ? 'Void' : 'Return'} ${sale.receiptNo}${isVoid ? '' : `: ${reason}`}`.slice(0, 200), user: user._id,
+    })));
+    undo.push(() => StockMovement.deleteMany({ _id: { $in: movements.map((m) => m._id) } }));
+
+    if (creditReduction > 0) {
+      const amount = creditReduction;
+      const customer = await adjustBalance(sale.customer, -amount, { requireCovered: true });
+      if (customer) {
+        undo.push(() => adjustBalance(sale.customer, amount));
+      } else {
+        // The customer's balance changed under us (e.g. they just paid): hand the money back instead.
+        await Sale.updateOne({ _id: sale._id }, { $inc: { creditReturned: -amount, refundedTotal: amount } });
+        undo.push(() => Sale.updateOne({ _id: sale._id }, { $inc: { creditReturned: amount, refundedTotal: -amount } }));
+        cashRefund = r2(cashRefund + amount);
+        creditReduction = 0;
+      }
+    }
+
+    if (cashRefund > 0) {
+      const refund = await Refund.create({ sale: sale._id, receiptNo: sale.receiptNo, method: refundMethod, amount: cashRefund, reason, user: user._id });
+      undo.push(() => Refund.deleteOne({ _id: refund._id }));
+    }
+  } catch (err) {
+    await rollback();
+    throw err;
+  }
+
+  return { creditReduction, cashRefund };
+}
+
+const respond = async (req, res, saleId, extra) => {
+  const fresh = await Sale.findById(saleId).populate('cashier', 'name');
+  res.json({ ...serialize(fresh, req.user), refundAmount: extra.cashRefund, creditReduced: extra.creditReduction, refundMethod: extra.cashRefund > 0 ? extra.method : null });
+};
+
+// Void: owner only. Returns everything still outstanding and cancels the sale.
+router.post('/:id/void', requireOwner, asyncHandler(async (req, res) => {
+  assertId(req.params.id);
+  const reason = readReason(req.body, 'voiding this sale');
+  const refundMethod = readRefundMethod(req.body);
+
+  const sale = await Sale.findOne({ _id: req.params.id, status: { $in: OPEN_STATUSES } });
   if (!sale) throw new SaleError('Sale not found or already voided', 409);
 
-  await Promise.all(sale.items.map((it) => Product.updateOne({ _id: it.product }, { $inc: { stock: it.qty } })));
-  await StockMovement.insertMany(
-    sale.items.map((it) => ({ product: it.product, type: 'void', qty: it.qty, sale: sale._id, reason: `Void ${sale.receiptNo}`, user: req.user._id })),
-  );
-  if (sale.customer && sale.balance > 0) await adjustBalance(sale.customer, -sale.balance);
-  res.json(sale);
+  const customer = sale.customer ? await Customer.findById(sale.customer).select('balance') : null;
+  const plan = planReturn(sale.toObject(), { all: true, customerBalance: customer ? customer.balance : 0 });
+  const result = await applyReturn({ sale, plan, reason, user: req.user, refundMethod, isVoid: true });
+  audit({ req, action: 'sale.void', targetId: sale._id, detail: { receiptNo: sale.receiptNo, refund: result.cashRefund, creditReduced: result.creditReduction } });
+  await respond(req, res, sale._id, { ...result, method: refundMethod });
 }));
 
-// Partial return: owner only. lines = [{ productId, qty }]. Restores stock and reduces credit balance.
+// Partial return: owner only. lines = [{ productId, qty }]. Restores stock, cancels owed credit first,
+// and refunds the rest using refundMethod (default Cash).
 router.post('/:id/return', requireOwner, asyncHandler(async (req, res) => {
   assertId(req.params.id);
-  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
-  if (reason.length < 3) throw new SaleError('Give a reason for the return');
+  const reason = readReason(req.body, 'the return');
+  const refundMethod = readRefundMethod(req.body);
 
   const lines = req.body.lines;
   if (!Array.isArray(lines) || lines.length === 0) throw new SaleError('No lines provided');
+  const clean = lines.map((l) => {
+    assertId(l?.productId, 'product');
+    return { productId: l.productId, qty: r3(num(l.qty, 'Quantity', { min: 0, max: 1e6, allowZero: false })) };
+  });
 
-  const sale = await Sale.findOne({ _id: req.params.id, status: { $in: ['completed', 'partial-return'] } });
+  const sale = await Sale.findOne({ _id: req.params.id, status: { $in: OPEN_STATUSES } });
   if (!sale) throw new SaleError('Sale not found or already voided', 404);
 
-  // Validate each return line against the original sale items.
-  const updates = [];
-  for (const l of lines) {
-    assertId(l?.productId, 'product');
-    const qty = r2(num(l.qty, 'Quantity', { min: 0, max: 1e6, allowZero: false }));
-    const item = sale.items.find((i) => String(i.product) === String(l.productId));
-    if (!item) throw new SaleError(`Product not found in this sale`);
-    const alreadyReturned = item.returnedQty || 0;
-    if (alreadyReturned + qty > item.qty) {
-      throw new SaleError(`Cannot return more than sold for ${item.name} (sold ${item.qty}, already returned ${alreadyReturned})`);
-    }
-    updates.push({ item, qty });
-  }
-
-  // Apply returnedQty increments on the sale document.
-  for (const { item, qty } of updates) {
-    item.returnedQty = r2((item.returnedQty || 0) + qty);
-  }
-
-  // If every line is fully returned, mark as voided; otherwise partial-return.
-  const fullyReturned = sale.items.every((i) => (i.returnedQty || 0) >= i.qty);
-  sale.status = fullyReturned ? 'voided' : 'partial-return';
-  if (fullyReturned) { sale.voidReason = reason; sale.voidedBy = req.user._id; sale.voidedAt = new Date(); }
-  await sale.save();
-
-  // Restore stock.
-  await Promise.all(updates.map(({ item, qty }) => Product.updateOne({ _id: item.product }, { $inc: { stock: qty } })));
-
-  // Write stock movements.
-  await StockMovement.insertMany(
-    updates.map(({ item, qty }) => ({
-      product: item.product, type: 'void', qty, sale: sale._id,
-      reason: `Return ${sale.receiptNo}: ${reason}`, user: req.user._id,
-    })),
-  );
-
-  // Reduce credit balance proportionally if the sale had an unpaid balance.
-  if (sale.customer && sale.balance > 0) {
-    const returnedValue = r2(updates.reduce((s, { item, qty }) => {
-      const unitNet = r2(item.lineTotal / item.qty);
-      return s + r2(unitNet * qty);
-    }, 0));
-    const creditReduction = r2(Math.min(returnedValue, sale.balance));
-    if (creditReduction > 0) await adjustBalance(sale.customer, -creditReduction);
-  }
-
-  res.json(serialize(sale, req.user));
+  const customer = sale.customer ? await Customer.findById(sale.customer).select('balance') : null;
+  const plan = planReturn(sale.toObject(), { lines: clean, customerBalance: customer ? customer.balance : 0 });
+  const result = await applyReturn({ sale, plan, reason, user: req.user, refundMethod, isVoid: false });
+  audit({ req, action: 'sale.return', targetId: sale._id, detail: { receiptNo: sale.receiptNo, refund: result.cashRefund, creditReduced: result.creditReduction } });
+  await respond(req, res, sale._id, { ...result, method: refundMethod });
 }));
 
 export default router;

@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 const schema = new mongoose.Schema(
   {
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
-    type: { type: String, enum: ['opening', 'receipt', 'sale', 'void', 'adjustment'], required: true },
+    type: { type: String, enum: ['opening', 'receipt', 'sale', 'void', 'return', 'adjustment'], required: true },
     qty: { type: Number, required: true }, // signed: negative removes stock
     costPrice: Number,
     reason: { type: String, trim: true, maxlength: 200 },

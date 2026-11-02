@@ -6,6 +6,7 @@ import { Field, Modal, RefreshIndicator, TableSkeleton, useToast } from '../ui.j
 import Receipt from '../Receipt.jsx';
 import { dateTime, fmt, qtyFmt, todayStr, r2 } from '../format.js';
 
+const METHODS = ['Cash', 'MoMo', 'Card', 'Transfer'];
 const STATUS_LABEL = { completed: 'Completed', voided: 'Voided', 'partial-return': 'Part. return' };
 const STATUS_CLASS = { completed: 'badge-green', voided: 'badge-red', 'partial-return': 'badge-amber' };
 
@@ -20,6 +21,7 @@ export default function Sales() {
   const [voiding, setVoiding] = useState(null);
   const [returning, setReturning] = useState(null);
   const [reason, setReason] = useState('');
+  const [refundMethod, setRefundMethod] = useState('Cash');
 
   const load = useCallback(() => {
     swrFetch(`/sales?from=${from}&to=${to}`, { onData: setSales, onRefreshing: setRefreshing, ttlMs: 20_000 })
@@ -29,8 +31,8 @@ export default function Sales() {
 
   const doVoid = async () => {
     try {
-      await api(`/sales/${voiding._id}/void`, { method: 'POST', body: { reason } });
-      toast(`${voiding.receiptNo} voided and stock restored`);
+      const r = await api(`/sales/${voiding._id}/void`, { method: 'POST', body: { reason, refundMethod } });
+      toast(`${voiding.receiptNo} voided and stock restored${refundNote(r)}`);
       setVoiding(null); setReason(''); load();
     } catch (e) { toast(e.message, 'err'); }
   };
@@ -87,7 +89,7 @@ export default function Sales() {
                 <td><span className={`badge ${STATUS_CLASS[s.status] || ''}`}>{STATUS_LABEL[s.status] || s.status}</span></td>
                 {isOwner && (
                   <td className="acts" onClick={(e) => e.stopPropagation()}>
-                    {s.status === 'completed' && (
+                    {(s.status === 'completed' || s.status === 'partial-return') && (
                       <button className="danger" onClick={() => { setVoiding(s); setReason(''); }}>Void</button>
                     )}
                     {(s.status === 'completed' || s.status === 'partial-return') && (
@@ -110,7 +112,7 @@ export default function Sales() {
           <Receipt sale={view} />
           <div className="actions">
             <button className="primary" onClick={() => window.print()}>Print receipt</button>
-            {isOwner && view.status === 'completed' && (
+            {isOwner && (view.status === 'completed' || view.status === 'partial-return') && (
               <button className="danger" onClick={() => { setVoiding(view); setView(null); setReason(''); }}>Void</button>
             )}
             {isOwner && (view.status === 'completed' || view.status === 'partial-return') && (
@@ -127,6 +129,7 @@ export default function Sales() {
           <Field label="Reason">
             <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Customer returned everything" />
           </Field>
+          <RefundMethod value={refundMethod} onChange={setRefundMethod} />
           <div className="actions">
             <button className="danger" disabled={reason.trim().length < 3} onClick={doVoid}>Void sale</button>
           </div>
@@ -140,10 +143,26 @@ export default function Sales() {
   );
 }
 
+const refundNote = (r) => [
+  r?.refundAmount > 0 ? ` · refund ${fmt(r.refundAmount)} (${r.refundMethod})` : '',
+  r?.creditReduced > 0 ? ` · ${fmt(r.creditReduced)} taken off the customer's balance` : '',
+].join('');
+
+function RefundMethod({ value, onChange }) {
+  return (
+    <Field label="Refund paid out as" hint="Used for any money handed back. Amounts owed on credit are cancelled first.">
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {METHODS.map((m) => <option key={m}>{m}</option>)}
+      </select>
+    </Field>
+  );
+}
+
 function ReturnModal({ sale, onClose, onSaved }) {
   const toast = useToast();
   const [qtys, setQtys] = useState(() => Object.fromEntries(sale.items.map((_, i) => [i, ''])));
   const [reason, setReason] = useState('');
+  const [refundMethod, setRefundMethod] = useState('Cash');
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
@@ -154,8 +173,8 @@ function ReturnModal({ sale, onClose, onSaved }) {
     if (lines.length === 0) return toast('Enter a quantity to return for at least one item', 'err');
     setBusy(true);
     try {
-      await api(`/sales/${sale._id}/return`, { method: 'POST', body: { lines, reason } });
-      toast('Return recorded and stock restored');
+      const r = await api(`/sales/${sale._id}/return`, { method: 'POST', body: { lines, reason, refundMethod } });
+      toast(`Return recorded and stock restored${refundNote(r)}`);
       onSaved();
     } catch (err) { toast(err.message, 'err'); setBusy(false); }
   };
@@ -179,7 +198,7 @@ function ReturnModal({ sale, onClose, onSaved }) {
                     <td className="num">
                       <input type="number" min="0" max={remaining} step="any"
                         value={qtys[i]} onChange={(e) => setQtys({ ...qtys, [i]: e.target.value })}
-                        disabled={remaining <= 0} style={{ width: '5rem' }} />
+                        disabled={remaining <= 0} className="qty-input" />
                     </td>
                   </tr>
                 );
@@ -190,6 +209,7 @@ function ReturnModal({ sale, onClose, onSaved }) {
         <Field label="Reason">
           <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Damaged goods" required minLength={3} />
         </Field>
+        <RefundMethod value={refundMethod} onChange={setRefundMethod} />
         <div className="actions"><button className="primary" disabled={busy}>Record return</button></div>
       </form>
     </Modal>

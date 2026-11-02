@@ -49,6 +49,7 @@ function Daily() {
             <div className="report-kpi"><span>Discounts</span><strong>{fmt(d.discounts)}</strong></div>
             <div className="report-kpi warn"><span>Sold on credit</span><strong>{fmt(d.creditGiven)}</strong></div>
             <div className="report-kpi ok"><span>Debts collected</span><strong>{fmt(d.debtCollected)}</strong></div>
+            {d.refunded > 0 && <div className="report-kpi warn"><span>Refunded</span><strong>{fmt(d.refunded)}</strong></div>}
           </div>
 
           <div className="report-section-title">Received by payment method</div>

@@ -46,7 +46,7 @@ router.post('/adjust', asyncHandler(async (req, res) => {
 router.get('/movements', asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.productId) { assertId(req.query.productId, 'product'); filter.product = req.query.productId; }
-  if (typeof req.query.type === 'string' && ['opening', 'receipt', 'sale', 'void', 'adjustment'].includes(req.query.type)) filter.type = req.query.type;
+  if (typeof req.query.type === 'string' && ['opening', 'receipt', 'sale', 'void', 'return', 'adjustment'].includes(req.query.type)) filter.type = req.query.type;
   const rows = await StockMovement.find(filter).sort({ createdAt: -1 }).limit(200)
     .populate('product', 'name sku').populate('user', 'name');
   res.json(rows);

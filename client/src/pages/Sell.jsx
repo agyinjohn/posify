@@ -12,6 +12,7 @@ export default function Sell() {
   const { isOwner } = useAuth();
   const { online, queue } = useOfflineSync();
   const [cacheAge, setCacheAge] = useState(null);
+  const [cartOpen, setCartOpen] = useState(false); // mobile only: cart slides up over the catalog
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [q, setQ] = useState('');
@@ -99,7 +100,7 @@ export default function Sell() {
   };
 
   const done = (sale) => {
-    setPaying(false); setReceipt(sale); setCart([]); setOrderDiscount(''); setQ(''); load();
+    setPaying(false); setCartOpen(false); setReceipt(sale); setCart([]); setOrderDiscount(''); setQ(''); load();
   };
 
   const holdSale = async () => {
@@ -132,7 +133,7 @@ export default function Sell() {
   const failedCount = queue.filter((i) => i.status === 'error').length;
 
   return (
-    <div className="sell">
+    <div className={`sell${cartOpen ? ' cart-open' : ''}`}>
 
       {/* ── Banners ── */}
       <div className="sell-banners">
@@ -214,6 +215,7 @@ export default function Sell() {
             Cart{lines.length > 0 && <span className="cart-count">{lines.length}</span>}
           </span>
           <div className="cart-actions">
+            <button className="cart-close" onClick={() => setCartOpen(false)} aria-label="Back to products">← Products</button>
             <button disabled={lines.length === 0} onClick={() => setShowHold(true)}>Hold</button>
             <button onClick={() => setShowResume(true)} style={{ position: 'relative' }}>
               Resume{heldCount > 0 && <span className="held-badge">{heldCount}</span>}
@@ -278,6 +280,12 @@ export default function Sell() {
           </button>
         </div>
       </aside>
+
+      {/* Mobile: sticky bar that opens the cart */}
+      <button className="cart-bar" onClick={() => setCartOpen(true)} disabled={cartOpen}>
+        <span>🛒 Cart{lines.length > 0 ? ` (${lines.length})` : ''}</span>
+        <strong>{fmt(total)}</strong>
+      </button>
 
       {/* ── Modals ── */}
       {paying && (
@@ -493,6 +501,7 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
           <div><span>Discounts</span><strong>{fmt(summary.discounts)}</strong></div>
           <div><span>Sold on credit</span><strong>{fmt(summary.creditGiven)}</strong></div>
           <div><span>Debts collected</span><strong>{fmt(summary.debtCollected)}</strong></div>
+          {summary.refunded > 0 && <div><span>Refunded</span><strong>{fmt(summary.refunded)}</strong></div>}
         </div>
         <h3>By payment method</h3>
         <div className="tablewrap narrow"><table><tbody>
