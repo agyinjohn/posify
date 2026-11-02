@@ -9,6 +9,9 @@ import { SaleError } from '../lib/pricing.js';
 import { PAYMENT_METHODS, r2 } from '../lib/money.js';
 import { adjustBalance } from '../lib/balance.js';
 import { toCsv } from '../lib/csv.js';
+import CreditNote from '../models/CreditNote.js';
+import { buildStatement, netMovement } from '../lib/statement.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -20,7 +23,7 @@ router.get('/', asyncHandler(async (req, res) => {
     filter.$or = [{ name: rx }, { phone: rx }];
   }
   if (req.query.owing === '1') filter.balance = { $gt: 0 };
-  res.json(await Customer.find(filter).sort({ name: 1 }).limit(500));
+  res.json(await Customer.find(filter).sort({ name: 1 }).limit(2000));
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
@@ -32,6 +35,7 @@ router.patch('/:id', requireOwner, asyncHandler(async (req, res) => {
   assertId(req.params.id);
   const customer = await Customer.findByIdAndUpdate(req.params.id, pick(req.body, ['name', 'phone', 'creditLimit']), { new: true, runValidators: true });
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  audit({ req, action: 'customer.edit', target: customer.name, targetId: customer._id, detail: pick(req.body, ['name', 'phone', 'creditLimit']) });
   res.json(customer);
 }));
 
@@ -54,28 +58,18 @@ router.get('/:id/statement', asyncHandler(async (req, res) => {
 
   const { start, end, from, to } = dayRange(req.query.from, req.query.to);
 
-  const [sales, payments] = await Promise.all([
-    Sale.find({ customer: customer._id, createdAt: { $gte: start, $lt: end }, status: 'completed', balance: { $gt: 0 } })
-      .sort({ createdAt: 1 }).select('receiptNo total balance createdAt').lean(),
-    CustomerPayment.find({ customer: customer._id, createdAt: { $gte: start, $lt: end } })
-      .sort({ createdAt: 1 }).lean(),
+  const inRange = { customer: customer._id, createdAt: { $gte: start, $lt: end } };
+  const after = { customer: customer._id, createdAt: { $gte: end } };
+  const [sales, notes, payments, laterSales, laterNotes, laterPayments] = await Promise.all([
+    Sale.find({ ...inRange, balance: { $gt: 0 } }).sort({ createdAt: 1 }).select('receiptNo total balance status creditReturned createdAt').lean(),
+    CreditNote.find(inRange).sort({ createdAt: 1 }).lean(),
+    CustomerPayment.find(inRange).sort({ createdAt: 1 }).lean(),
+    Sale.find({ ...after, balance: { $gt: 0 } }).select('balance status creditReturned').lean(),
+    CreditNote.find(after).select('amount').lean(),
+    CustomerPayment.find(after).select('amount').lean(),
   ]);
-
-  // Merge and sort chronologically.
-  const rows = [
-    ...sales.map((s) => ({ date: s.createdAt, type: 'sale', ref: s.receiptNo, debit: s.balance, credit: 0 })),
-    ...payments.map((p) => ({ date: p.createdAt, type: 'payment', ref: p.method, debit: 0, credit: p.amount })),
-  ].sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  // Running balance starting from whatever the customer owed before this period.
-  // We approximate the opening balance as: current balance - net of this period.
-  const periodNet = r2(rows.reduce((s, r) => s + r.debit - r.credit, 0));
-  const openingBalance = r2(customer.balance - periodNet);
-  let running = openingBalance;
-  const statement = rows.map((r) => {
-    running = r2(running + r.debit - r.credit);
-    return { ...r, balance: running };
-  });
+  const afterNet = netMovement({ sales: laterSales, notes: laterNotes, payments: laterPayments });
+  const { openingBalance, closingBalance, statement } = buildStatement({ sales, notes, payments, currentBalance: customer.balance, afterNet });
 
   if (req.query.format === 'csv') {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -86,7 +80,7 @@ router.get('/:id/statement', asyncHandler(async (req, res) => {
     ));
   }
 
-  res.json({ customer, from, to, openingBalance, closingBalance: running, statement });
+  res.json({ customer, from, to, openingBalance, closingBalance, statement });
 }));
 
 // Record money a customer pays toward what they owe.
@@ -101,6 +95,7 @@ router.post('/:id/payments', asyncHandler(async (req, res) => {
     customer: customer._id, amount, method: req.body.method,
     note: typeof req.body.note === 'string' ? req.body.note.slice(0, 200) : undefined, user: req.user._id,
   });
+  audit({ req, action: 'customer.payment', target: customer.name, targetId: customer._id, detail: { amount, method: req.body.method } });
   res.status(201).json({ customer, payment });
 }));
 

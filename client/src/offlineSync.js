@@ -26,23 +26,29 @@ const BASE = import.meta.env.VITE_API_URL || '/api';
  * Returns the created sale on success, throws on failure.
  */
 async function postSale(payload) {
-  const res = await fetch(`${BASE}/sales`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE}/sales`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getToken()}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // fetch only rejects when the server can't be reached (every browser words it differently).
+    throw Object.assign(new Error('Server unreachable'), { network: true });
+  }
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.error || `Server error (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(data?.error || `Server error (${res.status})`), { status: res.status });
   return data;
 }
 
 /**
  * Drain all pending items. Stops on the first network failure (server
- * unreachable) but continues past application-level errors (e.g. 409
- * oversell) so one bad sale doesn't block the rest.
+ * unreachable) or 401 and leaves the sale pending; continues past real
+ * rejections (e.g. 409 oversell) so one bad sale doesn't block the rest.
  *
  * @param {function} onProgress  called after each item with the updated queue
  */
@@ -54,9 +60,10 @@ export async function syncQueue(onProgress) {
       await postSale(item.payload);
       await markSynced(item.id);
     } catch (err) {
-      const isNetworkError = err.message.includes('Failed to fetch') || err.message.includes('NetworkError');
+      // Server unreachable or signed out: nothing is wrong with the sale itself, so leave it pending
+      // and stop; it goes through on the next sync. Only real rejections (e.g. out of stock) are marked failed.
+      if (err.network || err.status === 401) break;
       await markFailed(item.id, err.message);
-      if (isNetworkError) break; // server unreachable — stop trying
     }
     if (onProgress) onProgress(await getAllQueued());
   }

@@ -23,6 +23,7 @@ import purchaseOrderRoutes from './routes/purchase-orders.js';
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
+  if (config.trustProxy) app.set('trust proxy', config.trustProxy);
   app.use(helmet({
     contentSecurityPolicy: {
       useDefaults: true,

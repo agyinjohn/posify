@@ -24,6 +24,7 @@ const itemSchema = new mongoose.Schema(
 const schema = new mongoose.Schema(
   {
     receiptNo: { type: String, unique: true, required: true },
+    clientId: { type: String, maxlength: 64 }, // idempotency key from the till, see POST /sales
     mode: { type: String, enum: ['retail', 'wholesale'], required: true },
     items: [itemSchema],
     grossTotal: Number,
@@ -53,6 +54,7 @@ const schema = new mongoose.Schema(
 );
 
 schema.index({ createdAt: -1 });
+schema.index({ clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
 schema.index({ cashier: 1, createdAt: -1 });
 
 export default mongoose.model('Sale', schema);

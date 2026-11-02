@@ -23,7 +23,8 @@ Update the boxes as you test and deliver.
 - [~] Printable receipt (browser print, 80mm layout) and reprint from Sales page
 - [~] Void a sale (owner only, reason required): restores stock and customer balance, cannot be voided twice
 - [x] Hold and resume a sale
-- [~] Partial returns and refunds (only whole-sale void exists)
+- [~] Partial returns and refunds: owner only, owed credit is cancelled first and the rest refunded; void works after a partial return; refunds come out of shift and daily totals
+- [~] Safe to repeat: each sale carries a key, so a lost reply or offline replay never charges twice
 
 ## 2. Products and stock
 - [~] Add, edit and hide products: name, SKU, barcode, category, cost, retail price, wholesale price, reorder level

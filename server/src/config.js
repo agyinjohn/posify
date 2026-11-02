@@ -16,6 +16,8 @@ export const config = {
   mongoUri: need('MONGODB_URI'),
   jwtSecret: need('JWT_SECRET'),
   clientOrigins: (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',').map((s) => s.trim()),
+  // Number of reverse proxies in front of the server (Render, Nginx...). Needed so the login limit sees real client IPs.
+  trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : false,
   maxCashierDiscountPct: Number(process.env.MAX_CASHIER_DISCOUNT_PCT ?? 10),
   cloudinary: cloud,
   cloudinaryEnabled: Boolean(cloud.cloud_name && cloud.api_key && cloud.api_secret),

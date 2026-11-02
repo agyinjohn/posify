@@ -17,7 +17,7 @@ async function request(path, { method = 'GET', body, form } = {}) {
   try {
     res = await fetch(BASE + path, { method, headers, body: form || (body ? JSON.stringify(body) : undefined) });
   } catch {
-    throw new Error('Cannot reach the server. Check your internet connection and try again.');
+    throw Object.assign(new Error('Cannot reach the server. Check your internet connection and try again.'), { network: true });
   }
   if (res.status === 401 && token && !path.startsWith('/auth/login')) {
     setToken('');
@@ -26,23 +26,33 @@ async function request(path, { method = 'GET', body, form } = {}) {
   return res;
 }
 
+// Save a sale on this device to be sent later, and hand back a stub the Sell page can show.
+async function queueSale(body) {
+  const id = await enqueueSale(body);
+  return {
+    _offlineQueued: true,
+    _queueId: id,
+    receiptNo: `OFFLINE-${id}`,
+    total: 0,
+    status: 'queued',
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export async function api(path, opts) {
-  // Intercept POST /sales when offline — queue locally instead of failing.
-  if (!navigator.onLine && opts?.method === 'POST' && path === '/sales') {
-    const id = await enqueueSale(opts.body);
-    // Return a synthetic sale-like object so the Sell page can show a receipt stub.
-    return {
-      _offlineQueued: true,
-      _queueId: id,
-      receiptNo: `OFFLINE-${id}`,
-      total: opts.body?.items
-        ? opts.body.items.reduce((s, i) => s + (Number(i.qty) || 0), 0) // rough placeholder
-        : 0,
-      status: 'queued',
-      createdAt: new Date().toISOString(),
-    };
+  const isSale = opts?.method === 'POST' && path === '/sales';
+  // Offline: queue the sale locally instead of failing.
+  if (isSale && !navigator.onLine) return queueSale(opts.body);
+
+  let res;
+  try {
+    res = await request(path, opts);
+  } catch (err) {
+    // "Online" but the server is unreachable (weak wifi): queue too. The sale carries a clientId,
+    // so if the first attempt actually got through, syncing returns that sale instead of a duplicate.
+    if (isSale && err.network) return queueSale(opts.body);
+    throw err;
   }
-  const res = await request(path, opts);
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
   return data;

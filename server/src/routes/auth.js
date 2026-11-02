@@ -7,7 +7,7 @@ import { asyncHandler } from '../lib/asyncHandler.js';
 import { audit } from '../lib/audit.js';
 
 const router = Router();
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false,
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, skipSuccessfulRequests: true, standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many sign-in attempts. Try again in 15 minutes' } });
 
 // Compared against when the username does not exist, so response time doesn't reveal valid usernames.

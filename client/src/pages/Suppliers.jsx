@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { Field, Modal, useToast } from '../ui.jsx';
 import { dateTime, fmt, qtyFmt } from '../format.js';
 
-const PO_STATUS_CLASS = { draft: 'badge-amber', ordered: 'badge-green', received: 'badge-red' };
+const PO_STATUS_CLASS = { draft: '', ordered: 'badge-amber', received: 'badge-green' };
 const TABS = [['suppliers', 'Suppliers'], ['pos', 'Purchase Orders']];
 
 export default function Suppliers() {

@@ -9,6 +9,7 @@ import { assertId, num } from '../lib/validate.js';
 import { SaleError } from '../lib/pricing.js';
 import { r2, r3 } from '../lib/money.js';
 import { audit } from '../lib/audit.js';
+import { applyReceipt } from '../lib/cost.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
@@ -78,45 +79,73 @@ router.post('/:id/order', asyncHandler(async (req, res) => {
 }));
 
 // Receive stock against a PO. Updates product stock + weighted-average cost, writes receipt movements.
+// Lines default to what is still outstanding; send lines:[{productId, qty, unitCost}] for what actually arrived.
+// The PO stays 'ordered' until every line is fully received, so a short delivery can be completed later.
 router.post('/:id/receive', asyncHandler(async (req, res) => {
   assertId(req.params.id);
   const po = await PurchaseOrder.findOne({ _id: req.params.id, status: { $in: ['draft', 'ordered'] } });
   if (!po) throw new SaleError('PO not found or already received', 404);
 
-  // Optional per-line overrides: [{ productId, qty, unitCost }]
-  // If not provided, receive the full ordered qty at the ordered cost.
-  const overrides = Array.isArray(req.body.lines) ? req.body.lines : [];
-  const overrideMap = new Map(overrides.map((o) => [String(o.productId), o]));
+  const overrideMap = new Map((Array.isArray(req.body.lines) ? req.body.lines : []).map((o) => [String(o?.productId), o]));
 
-  const movements = [];
-  for (const line of po.lines) {
+  // Validate everything before writing anything.
+  const plan = [];
+  for (const [index, line] of po.lines.entries()) {
     const ov = overrideMap.get(String(line.product));
-    const qty = ov ? r3(num(ov.qty, 'Quantity', { min: 0, max: 1e6 })) : line.qty;
-    if (qty === 0) continue;
+    const outstanding = r3(Math.max(line.qty - (line.receivedQty || 0), 0));
+    const qty = ov ? r3(num(ov.qty, 'Quantity', { min: 0, max: 1e6 })) : outstanding;
+    if (qty <= 0) continue;
     const unitCost = ov?.unitCost !== undefined ? r2(num(ov.unitCost, 'Unit cost', { min: 0 })) : line.unitCost;
+    if (!(await Product.exists({ _id: line.product }))) throw new SaleError(`${line.name} no longer exists, so it can't be received`, 409);
+    plan.push({ index, line, qty, unitCost, receivedQty: r3((line.receivedQty || 0) + qty) });
+  }
+  if (plan.length === 0) throw new SaleError('No lines to receive');
+  const complete = po.lines.every((l, i) => r3(plan.find((p) => p.index === i)?.receivedQty ?? (l.receivedQty || 0)) >= l.qty);
 
-    const product = await Product.findById(line.product);
-    if (!product) continue;
-    const newCost = product.stock > 0
-      ? r2((product.stock * product.costPrice + qty * unitCost) / (product.stock + qty))
-      : r2(unitCost);
+  // Claim the PO first (optimistic lock) so two clicks or two tills cannot receive the same stock twice.
+  const set = { status: complete ? 'received' : 'ordered' };
+  const oldSet = { status: po.status };
+  for (const p of plan) { set[`lines.${p.index}.receivedQty`] = p.receivedQty; oldSet[`lines.${p.index}.receivedQty`] = p.line.receivedQty || 0; }
+  if (complete) { set.receivedBy = req.user._id; set.receivedAt = new Date(); }
+  const rev = po.rev || 0;
+  const claimed = await PurchaseOrder.findOneAndUpdate(
+    { _id: po._id, status: { $in: ['draft', 'ordered'] }, ...(rev ? { rev } : { $or: [{ rev: 0 }, { rev: { $exists: false } }] }) },
+    { $set: set, $inc: { rev: 1 } },
+    { new: true },
+  );
+  if (!claimed) throw new SaleError('This PO was just changed by someone else. Reload and try again', 409);
 
-    await Product.findByIdAndUpdate(line.product, { $inc: { stock: qty }, $set: { costPrice: newCost } });
-    line.receivedQty = r3((line.receivedQty || 0) + qty);
-    movements.push({ product: line.product, type: 'receipt', qty, costPrice: unitCost,
-      reason: `PO from ${po.supplierName}`, user: req.user._id });
+  const done = [];
+  try {
+    for (const p of plan) {
+      const result = await applyReceipt({
+        qty: p.qty,
+        unitCost: p.unitCost,
+        read: async () => Product.findById(p.line.product).select('stock costPrice').lean(),
+        cas: (prev, next) => Product.findOneAndUpdate({ _id: p.line.product, stock: prev.stock, costPrice: prev.costPrice }, { $set: next }, { new: true }),
+      });
+      if (!result) throw new SaleError(`Stock for ${p.line.name} kept changing. Please try again`, 409);
+      done.push({ p, result });
+    }
+    await StockMovement.insertMany(done.map(({ p }) => ({
+      product: p.line.product, type: 'receipt', qty: p.qty, costPrice: p.unitCost,
+      reason: `PO from ${po.supplierName}`, user: req.user._id,
+    })));
+  } catch (err) {
+    // Put back what was received and reopen the PO.
+    for (const { p, result } of done) {
+      const back = await Product.findOneAndUpdate({ _id: p.line.product, stock: result.next.stock, costPrice: result.next.costPrice }, { $set: result.prev }).catch(() => null);
+      if (!back) await Product.updateOne({ _id: p.line.product }, { $inc: { stock: -p.qty } }).catch(() => {});
+    }
+    await PurchaseOrder.updateOne(
+      { _id: po._id },
+      { $set: oldSet, ...(complete ? { $unset: { receivedBy: '', receivedAt: '' } } : {}) },
+    ).catch(() => {});
+    throw err;
   }
 
-  if (movements.length === 0) throw new SaleError('No lines to receive');
-  await StockMovement.insertMany(movements);
-
-  po.status = 'received';
-  po.receivedBy = req.user._id;
-  po.receivedAt = new Date();
-  await po.save();
-
-  audit({ req, action: 'po.receive', target: po.supplierName, targetId: po._id, detail: { lines: movements.length } });
-  res.json(po);
+  audit({ req, action: 'po.receive', target: po.supplierName, targetId: po._id, detail: { lines: plan.length, complete } });
+  res.json(claimed);
 }));
 
 export default router;
