@@ -2,6 +2,8 @@ import { Router } from 'express';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import CustomerPayment from '../models/CustomerPayment.js';
+import Refund from '../models/Refund.js';
+import { netSale } from '../lib/returns.js';
 import { requireAuth, requireOwner } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { dayRange } from '../lib/validate.js';
@@ -11,35 +13,39 @@ import { toCsv } from '../lib/csv.js';
 const router = Router();
 router.use(requireAuth, requireOwner);
 
-const saleProfit = (s) =>
-  s.items.reduce((sum, it) => sum + it.lineTotal - it.costPrice * it.qty, 0) - (s.orderDiscount || 0);
-
 // Daily cash-up style summary, split by how customers paid.
 router.get('/daily', asyncHandler(async (req, res) => {
   const { start, end, from } = dayRange(req.query.date, req.query.date);
-  const [sales, voided, custPayments] = await Promise.all([
-    Sale.find({ createdAt: { $gte: start, $lt: end }, status: 'completed' }).lean(),
+  const [allSales, voided, custPayments, refunds] = await Promise.all([
+    Sale.find({ createdAt: { $gte: start, $lt: end } }).lean(),
     Sale.find({ createdAt: { $gte: start, $lt: end }, status: 'voided' }).select('total').lean(),
     CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).lean(),
+    Refund.find({ createdAt: { $gte: start, $lt: end } }).lean(),
   ]);
+  // Voids made before refunds were tracked (no refundedTotal) stay excluded, as before.
+  const sales = allSales.filter((s) => s.status !== 'voided' || s.refundedTotal != null);
 
   const byMethod = Object.fromEntries(PAYMENT_METHODS.map((m) => [m, 0]));
   let total = 0, discounts = 0, profit = 0, creditGiven = 0;
   for (const s of sales) {
-    total += s.total; discounts += s.discountTotal || 0; profit += saleProfit(s); creditGiven += s.balance || 0;
+    const n = netSale(s);
+    total += n.net; discounts += s.discountTotal || 0; profit += n.profit; creditGiven += n.credit;
     for (const p of s.payments) byMethod[p.method] += p.amount;
   }
+  let refunded = 0;
+  for (const rf of refunds) { byMethod[rf.method] -= rf.amount; refunded += rf.amount; }
   let debtCollected = 0;
   for (const p of custPayments) { byMethod[p.method] += p.amount; debtCollected += p.amount; }
 
   res.json({
     date: from,
-    salesCount: sales.length,
+    salesCount: sales.filter((s) => s.status !== 'voided').length,
     total: r2(total),
     discounts: r2(discounts),
     profit: r2(profit),
     creditGiven: r2(creditGiven),
     debtCollected: r2(debtCollected),
+    refunded: r2(refunded),
     byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, r2(v)])),
     voidedCount: voided.length,
     voidedTotal: r2(voided.reduce((s, v) => s + v.total, 0)),
@@ -48,13 +54,15 @@ router.get('/daily', asyncHandler(async (req, res) => {
 
 router.get('/by-product', asyncHandler(async (req, res) => {
   const { start, end, from, to } = dayRange(req.query.from, req.query.to);
-  const sales = await Sale.find({ createdAt: { $gte: start, $lt: end }, status: 'completed' }).select('items').lean();
+  const sales = await Sale.find({ createdAt: { $gte: start, $lt: end }, status: { $in: ['completed', 'partial-return'] } }).select('items').lean();
   const map = new Map();
   for (const s of sales) {
     for (const it of s.items) {
       const key = String(it.product);
       const row = map.get(key) || { product: key, name: it.name, sku: it.sku, qty: 0, revenue: 0, profit: 0 };
-      row.qty += it.qty; row.revenue += it.lineTotal; row.profit += it.lineTotal - it.costPrice * it.qty;
+      const rem = it.qty - (it.returnedQty || 0); // returned units no longer count as sold
+      const frac = it.qty > 0 ? rem / it.qty : 0;
+      row.qty += rem; row.revenue += it.lineTotal * frac; row.profit += it.lineTotal * frac - it.costPrice * rem;
       map.set(key, row);
     }
   }

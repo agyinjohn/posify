@@ -8,6 +8,7 @@ import './styles.css';
 import App from './App.jsx';
 import { AuthProvider } from './auth.jsx';
 import { ToastProvider } from './ui.jsx';
+import { startResponsiveTables } from './responsiveTables.js';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -20,3 +21,5 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>,
 );
+
+startResponsiveTables();

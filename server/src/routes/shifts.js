@@ -2,6 +2,8 @@ import { Router } from 'express';
 import Shift from '../models/Shift.js';
 import Sale from '../models/Sale.js';
 import CustomerPayment from '../models/CustomerPayment.js';
+import Refund from '../models/Refund.js';
+import { netSale } from '../lib/returns.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { assertId, num } from '../lib/validate.js';
@@ -50,18 +52,28 @@ router.post('/:id/close', asyncHandler(async (req, res) => {
   const closingCash = r2(num(req.body.closingCash ?? 0, 'Closing cash', { min: 0, max: 1e9 }));
 
   // Summarise all sales and customer payments that happened during this shift.
-  const [sales, custPayments] = await Promise.all([
-    Sale.find({ createdAt: { $gte: shift.createdAt }, status: 'completed' }).lean(),
+  // Voided sales are included (their payments went in, and the matching Refund takes them out).
+  // Voids made before refunds were tracked have no refundedTotal field and are skipped, as before.
+  const [allSales, custPayments, refunds] = await Promise.all([
+    Sale.find({ createdAt: { $gte: shift.createdAt } }).lean(),
     CustomerPayment.find({ createdAt: { $gte: shift.createdAt } }).lean(),
+    Refund.find({ createdAt: { $gte: shift.createdAt } }).lean(),
   ]);
+  const sales = allSales.filter((s) => s.status !== 'voided' || s.refundedTotal != null);
 
   const byMethod = Object.fromEntries(PAYMENT_METHODS.map((m) => [m, 0]));
   let total = 0, discounts = 0, creditGiven = 0;
+  let refunded = 0;
   for (const s of sales) {
-    total += s.total;
+    const n = netSale(s);
+    total += n.net;
     discounts += s.discountTotal || 0;
-    creditGiven += s.balance || 0;
+    creditGiven += n.credit;
     for (const p of s.payments) byMethod[p.method] = r2(byMethod[p.method] + p.amount);
+  }
+  for (const rf of refunds) {
+    byMethod[rf.method] = r2(byMethod[rf.method] - rf.amount);
+    refunded += rf.amount;
   }
   let debtCollected = 0;
   for (const p of custPayments) {
@@ -70,11 +82,12 @@ router.post('/:id/close', asyncHandler(async (req, res) => {
   }
 
   const summary = {
-    salesCount: sales.length,
+    salesCount: sales.filter((s) => s.status !== 'voided').length,
     total: r2(total),
     discounts: r2(discounts),
     creditGiven: r2(creditGiven),
     debtCollected: r2(debtCollected),
+    refunded: r2(refunded),
     byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, r2(v)])),
     expectedCash: r2(shift.openingFloat + byMethod['Cash']),
     cashVariance: r2(closingCash - (shift.openingFloat + byMethod['Cash'])),

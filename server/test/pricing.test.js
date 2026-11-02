@@ -113,3 +113,26 @@ test('product with unitsPerPack=1 ignores unit:pack', () => {
   assert.equal(r.items[0].qty, 4); // no expansion
   assert.equal(r.items[0].packQty, null);
 });
+
+test('packs and loose pieces of one product are kept apart for the receipt', () => {
+  const p = mk({ unitsPerPack: 12, packLabel: 'ctn', retailPrice: 5 });
+  const r = priceSale({
+    lines: [{ productId: 'p1', qty: 2, unit: 'pack' }, { productId: 'p1', qty: 3 }],
+    productsById: map(p), mode: 'retail',
+  });
+  assert.equal(r.items.length, 1);
+  const it = r.items[0];
+  assert.equal(it.qty, 27);       // 2*12 + 3 pieces: stock and returns still work in pieces
+  assert.equal(it.packQty, 2);
+  assert.equal(it.loosePcs, 3);
+  assert.equal(r.total, 135);
+});
+
+test('pack-only and piece-only lines have no spurious loose pieces', () => {
+  const p = mk({ unitsPerPack: 12, packLabel: 'ctn' });
+  const packOnly = priceSale({ lines: [{ productId: 'p1', qty: 1, unit: 'pack' }], productsById: map(p), mode: 'retail' }).items[0];
+  assert.equal(packOnly.loosePcs, null);
+  const pcsOnly = priceSale({ lines: [{ productId: 'p1', qty: 4 }], productsById: map(p), mode: 'retail' }).items[0];
+  assert.equal(pcsOnly.packQty, null);
+  assert.equal(pcsOnly.loosePcs, null);
+});

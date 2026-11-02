@@ -5,7 +5,7 @@ import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { dateTime, fmt, qtyFmt } from '../format.js';
 
 const MOVE_TYPE_CLASS = {
-  sale: 'badge-red', void: 'badge-amber', receipt: 'badge-green',
+  sale: 'badge-red', void: 'badge-amber', return: 'badge-amber', receipt: 'badge-green',
   adjustment: 'badge-amber', opening: 'badge-green', stocktake: 'badge-amber',
 };
 const TABS = [['receive', 'Receive stock'], ['adjust', 'Adjust stock'], ['stocktake', 'Stock take'], ['history', 'History']];
@@ -232,6 +232,11 @@ function StockTakePanel({ products, onSaved }) {
           <span>Variances</span><strong>{result.varianceCount}</strong>
         </div>
       </div>
+      {result.skipped?.length > 0 && (
+        <div className="notice">
+          <strong>Not applied:</strong> {result.skipped.join(', ')} — stock kept changing while saving. Count these again.
+        </div>
+      )}
       <VarianceTable lines={result.lines.filter((l) => l.variance !== 0)} />
       {result.lines.filter((l) => l.variance === 0).length > 0 && (
         <p className="hint" style={{ marginTop: '.5rem' }}>

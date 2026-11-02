@@ -29,12 +29,14 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
     const isPack = l.unit === 'pack' && unitsPerPack > 1;
     const qty = isPack ? r3(rawQty * unitsPerPack) : r3(rawQty);
     const disc = Math.max(0, Number(l.discount) || 0);
-    const prev = merged.get(key) || { qty: 0, discount: 0, packQty: 0, isPack: false };
+    const prev = merged.get(key) || { qty: 0, discount: 0, packQty: 0, loosePcs: 0, isPack: false };
     merged.set(key, {
       qty: r3(prev.qty + qty),
       discount: r2(prev.discount + disc),
-      // Track original pack qty for receipt display
+      // Receipt breakdown: packs and loose pieces of the same product are kept apart,
+      // so "2 ctn + 3 pcs" never shows as a misleading single pack count.
       packQty: isPack ? r3((prev.packQty || 0) + rawQty) : prev.packQty,
+      loosePcs: isPack ? prev.loosePcs : r3((prev.loosePcs || 0) + qty),
       isPack: prev.isPack || isPack,
     });
   }
@@ -60,6 +62,7 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
       sku: p.sku,
       qty: line.qty,           // always in pieces
       packQty: line.isPack ? line.packQty : null,
+      loosePcs: line.isPack && line.loosePcs > 0 ? line.loosePcs : null, // pieces sold alongside the packs
       packLabel: line.isPack ? (p.packLabel || 'pack') : null,
       unitsPerPack: line.isPack ? p.unitsPerPack : null,
       unitPrice,

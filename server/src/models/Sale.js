@@ -14,6 +14,7 @@ const itemSchema = new mongoose.Schema(
     returnedQty: { type: Number, default: 0 }, // cumulative qty returned on this line
     // Pack / unit conversion snapshot
     packQty: { type: Number, default: null },
+    loosePcs: { type: Number, default: null }, // loose pieces sold alongside packs of the same product
     packLabel: { type: String, default: null },
     unitsPerPack: { type: Number, default: null },
   },
@@ -42,6 +43,11 @@ const schema = new mongoose.Schema(
     voidReason: String,
     voidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     voidedAt: Date,
+    // Returns bookkeeping. creditReturned = part of the unpaid balance cancelled by returns;
+    // refundedTotal = money handed back. rev guards concurrent returns (optimistic lock).
+    creditReturned: { type: Number, default: 0 },
+    refundedTotal: { type: Number, default: 0 },
+    rev: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
 import Login from './pages/Login.jsx';
@@ -17,7 +17,7 @@ import { SHOP_NAME } from './format.js';
 import { useOfflineSync } from './offlineSync.js';
 import {
   ShoppingCart, Receipt, Users as UsersIcon, Package, BarChart2,
-  Clock, UserCog, ClipboardList, Truck, TrendingUp,
+  Clock, UserCog, ClipboardList, Truck, TrendingUp, Menu, X,
 } from 'lucide-react';
 
 const PAGES = {
@@ -33,7 +33,7 @@ const PAGES = {
   '/audit':     { title: 'Audit Log', sub: 'Track every change made in the system' },
 };
 
-function Topbar({ user, onQueue, logout }) {
+function Topbar({ user, onQueue, logout, onMenu }) {
   const { pathname } = useLocation();
   const { online } = useOfflineSync();
   const { isOwner } = useAuth();
@@ -41,6 +41,7 @@ function Topbar({ user, onQueue, logout }) {
   const [open, setOpen] = useState(false);
   return (
     <header className="topbar">
+      <button className="topbar-menu" onClick={onMenu} aria-label="Open menu"><Menu size={22} /></button>
       <div className="topbar-titles">
         <span className="topbar-title">{title}</span>
         {sub && <span className="topbar-sub">{sub}</span>}
@@ -84,6 +85,15 @@ function Topbar({ user, onQueue, logout }) {
 export default function App() {
   const { user, loading, logout, isOwner } = useAuth();
   const [showQueue, setShowQueue] = useState(false);
+  const [navOpen, setNavOpen] = useState(false); // mobile drawer
+  const { pathname } = useLocation();
+  useEffect(() => { setNavOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!navOpen) return undefined;
+    const onKey = (e) => e.key === 'Escape' && setNavOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [navOpen]);
   if (loading) return <div className="boot">Loading…</div>;
   if (!user) return <Login />;
 
@@ -91,7 +101,9 @@ export default function App() {
 
   return (
     <div className="shell">
-      <nav className="side">
+      {navOpen && <div className="side-scrim" onClick={() => setNavOpen(false)} />}
+      <nav className={`side${navOpen ? ' open' : ''}`} aria-label="Main">
+        <button className="side-close" onClick={() => setNavOpen(false)} aria-label="Close menu"><X size={20} /></button>
         <div className="side-brand">
           <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" className="side-logo">
             <rect width="32" height="32" rx="8" fill="#E3A62B" />
@@ -138,7 +150,7 @@ export default function App() {
       </nav>
 
       <div className="shell-body">
-        <Topbar user={user} onQueue={() => setShowQueue(true)} logout={logout} />
+        <Topbar user={user} onQueue={() => setShowQueue(true)} logout={logout} onMenu={() => setNavOpen(true)} />
         <main>
           <Routes>
             <Route path="/" element={<Sell />} />
