@@ -4,6 +4,7 @@ import Product from '../models/Product.js';
 import Customer from '../models/Customer.js';
 import StockMovement from '../models/StockMovement.js';
 import Refund from '../models/Refund.js';
+import CreditNote from '../models/CreditNote.js';
 import { nextReceiptNo } from '../models/Counter.js';
 import { requireAuth, requireOwner } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
@@ -28,6 +29,14 @@ const serialize = (sale, user) => {
 router.post('/', asyncHandler(async (req, res) => {
   const { items, mode = 'retail', orderDiscount = 0, payments = [], customerId, note } = req.body;
   if (!Array.isArray(items)) throw new SaleError('Cart is empty');
+
+  // clientId makes the request safe to repeat: if the first attempt got through but its reply was lost
+  // (flaky wifi, offline queue replay), the retry returns that sale instead of charging twice.
+  const clientId = typeof req.body.clientId === 'string' && /^[\w-]{8,64}$/.test(req.body.clientId) ? req.body.clientId : undefined;
+  if (clientId) {
+    const existing = await Sale.findOne({ clientId });
+    if (existing) return res.status(200).json(serialize(existing, req.user));
+  }
   items.forEach((i) => assertId(i?.productId, 'product'));
 
   const products = await Product.find({ _id: { $in: items.map((i) => i.productId) }, active: true });
@@ -81,6 +90,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
     sale = await Sale.create({
       receiptNo: await nextReceiptNo(),
+      clientId,
       mode,
       items: priced.items,
       grossTotal: priced.grossTotal,
@@ -105,6 +115,11 @@ router.post('/', asyncHandler(async (req, res) => {
     if (creditReserved > 0) await adjustBalance(customer._id, -creditReserved).catch(() => {});
     if (sale) await Sale.deleteOne({ _id: sale._id }).catch(() => {});
     await Promise.all(decremented.map((it) => Product.updateOne({ _id: it.product }, { $inc: { stock: it.qty } })));
+    // Two copies of the same request raced: the other one won. Undo ours and return its sale.
+    if (err.code === 11000 && clientId) {
+      const winner = await Sale.findOne({ clientId });
+      if (winner) return res.status(200).json(serialize(winner, req.user));
+    }
     throw err;
   }
 
@@ -206,6 +221,8 @@ async function applyReturn({ sale, plan, reason, user, refundMethod, isVoid }) {
       const customer = await adjustBalance(sale.customer, -amount, { requireCovered: true });
       if (customer) {
         undo.push(() => adjustBalance(sale.customer, amount));
+        const note = await CreditNote.create({ customer: sale.customer, sale: sale._id, receiptNo: sale.receiptNo, amount, user: user._id });
+        undo.push(() => CreditNote.deleteOne({ _id: note._id }));
       } else {
         // The customer's balance changed under us (e.g. they just paid): hand the money back instead.
         await Sale.updateOne({ _id: sale._id }, { $inc: { creditReturned: -amount, refundedTotal: amount } });

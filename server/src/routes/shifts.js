@@ -3,12 +3,12 @@ import Shift from '../models/Shift.js';
 import Sale from '../models/Sale.js';
 import CustomerPayment from '../models/CustomerPayment.js';
 import Refund from '../models/Refund.js';
-import { netSale } from '../lib/returns.js';
+import { cashUp } from '../lib/cashup.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { assertId, num } from '../lib/validate.js';
 import { SaleError } from '../lib/pricing.js';
-import { PAYMENT_METHODS, r2 } from '../lib/money.js';
+import { r2 } from '../lib/money.js';
 import { audit } from '../lib/audit.js';
 
 const router = Router();
@@ -33,12 +33,18 @@ router.post('/open', asyncHandler(async (req, res) => {
   const existing = await Shift.findOne({ status: 'open' });
   if (existing) throw new SaleError('A shift is already open', 409);
   const openingFloat = r2(num(req.body.openingFloat ?? 0, 'Opening float', { min: 0, max: 1e9 }));
-  const shift = await Shift.create({
-    openedBy: req.user._id,
-    openedByName: req.user.name,
-    openingFloat,
-    note: typeof req.body.note === 'string' ? req.body.note.slice(0, 200) : '',
-  });
+  let shift;
+  try {
+    shift = await Shift.create({
+      openedBy: req.user._id,
+      openedByName: req.user.name,
+      openingFloat,
+      note: typeof req.body.note === 'string' ? req.body.note.slice(0, 200) : '',
+    });
+  } catch (err) {
+    if (err.code === 11000) throw new SaleError('A shift is already open', 409); // lost a race with another till
+    throw err;
+  }
   audit({ req, action: 'shift.open', targetId: shift._id, detail: { openingFloat } });
   res.status(201).json(shift);
 }));
@@ -46,60 +52,34 @@ router.post('/open', asyncHandler(async (req, res) => {
 // POST /api/shifts/:id/close
 router.post('/:id/close', asyncHandler(async (req, res) => {
   assertId(req.params.id);
-  const shift = await Shift.findOne({ _id: req.params.id, status: 'open' });
-  if (!shift) throw new SaleError('Shift not found or already closed', 404);
+  const open = await Shift.findOne({ _id: req.params.id, status: 'open' });
+  if (!open) throw new SaleError('Shift not found or already closed', 404);
 
   const closingCash = r2(num(req.body.closingCash ?? 0, 'Closing cash', { min: 0, max: 1e9 }));
 
-  // Summarise all sales and customer payments that happened during this shift.
-  // Voided sales are included (their payments went in, and the matching Refund takes them out).
-  // Voids made before refunds were tracked have no refundedTotal field and are skipped, as before.
-  const [allSales, custPayments, refunds] = await Promise.all([
-    Sale.find({ createdAt: { $gte: shift.createdAt } }).lean(),
-    CustomerPayment.find({ createdAt: { $gte: shift.createdAt } }).lean(),
-    Refund.find({ createdAt: { $gte: shift.createdAt } }).lean(),
+  // Everything that happened since the shift opened. Voided and partly returned sales are included:
+  // their payments went into the till and the Refund rows take the money back out.
+  const since = { createdAt: { $gte: open.createdAt } };
+  const [sales, custPayments, refunds] = await Promise.all([
+    Sale.find(since).lean(),
+    CustomerPayment.find(since).lean(),
+    Refund.find(since).lean(),
   ]);
-  const sales = allSales.filter((s) => s.status !== 'voided' || s.refundedTotal != null);
+  const summary = cashUp({ sales, custPayments, refunds, openingFloat: open.openingFloat, closingCash });
 
-  const byMethod = Object.fromEntries(PAYMENT_METHODS.map((m) => [m, 0]));
-  let total = 0, discounts = 0, creditGiven = 0;
-  let refunded = 0;
-  for (const s of sales) {
-    const n = netSale(s);
-    total += n.net;
-    discounts += s.discountTotal || 0;
-    creditGiven += n.credit;
-    for (const p of s.payments) byMethod[p.method] = r2(byMethod[p.method] + p.amount);
-  }
-  for (const rf of refunds) {
-    byMethod[rf.method] = r2(byMethod[rf.method] - rf.amount);
-    refunded += rf.amount;
-  }
-  let debtCollected = 0;
-  for (const p of custPayments) {
-    byMethod[p.method] = r2(byMethod[p.method] + p.amount);
-    debtCollected += p.amount;
-  }
-
-  const summary = {
-    salesCount: sales.filter((s) => s.status !== 'voided').length,
-    total: r2(total),
-    discounts: r2(discounts),
-    creditGiven: r2(creditGiven),
-    debtCollected: r2(debtCollected),
-    refunded: r2(refunded),
-    byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, r2(v)])),
-    expectedCash: r2(shift.openingFloat + byMethod['Cash']),
-    cashVariance: r2(closingCash - (shift.openingFloat + byMethod['Cash'])),
-  };
-
-  shift.closedBy = req.user._id;
-  shift.closedByName = req.user.name;
-  shift.closingCash = closingCash;
-  shift.note = typeof req.body.note === 'string' ? req.body.note.slice(0, 200) : shift.note;
-  shift.status = 'closed';
-  shift.closedAt = new Date();
-  await shift.save();
+  // Claim the close atomically so two tills closing at once cannot both succeed.
+  const shift = await Shift.findOneAndUpdate(
+    { _id: open._id, status: 'open' },
+    {
+      $set: {
+        status: 'closed', closedAt: new Date(), closedBy: req.user._id, closedByName: req.user.name,
+        closingCash, expectedCash: summary.expectedCash, cashVariance: summary.cashVariance, summary,
+        note: typeof req.body.note === 'string' ? req.body.note.slice(0, 200) : open.note,
+      },
+    },
+    { new: true },
+  );
+  if (!shift) throw new SaleError('Shift not found or already closed', 409);
 
   audit({ req, action: 'shift.close', targetId: shift._id, detail: { closingCash, cashVariance: summary.cashVariance } });
   res.json({ shift, summary });

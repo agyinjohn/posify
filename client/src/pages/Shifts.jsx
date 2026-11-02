@@ -25,9 +25,9 @@ export default function Shifts() {
         </thead>
         <tbody>
           {shifts.map((s) => {
-            const variance = s.closingCash != null
-              ? Math.round((s.closingCash - s.openingFloat) * 100) / 100
-              : null;
+            // Real variance (count vs float + cash taken - refunds), stored when the shift closed.
+            // Shifts closed before that was stored show a dash rather than a wrong number.
+            const variance = s.cashVariance ?? null;
             return (
               <tr key={s._id} className={s.status === 'open' ? 'ok' : ''}>
                 <td>{dateTime(s.createdAt)}</td>

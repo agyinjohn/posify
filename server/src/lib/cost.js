@@ -13,7 +13,7 @@ export const weightedCost = (stock, cost, qty, unitCost) =>
  * read(): Promise<{stock, costPrice}|null>
  * cas(prev, next): Promise<doc|null>   next = { stock, costPrice }; null if prev no longer matches
  * unitCost: number | undefined (undefined = keep the product's current cost)
- * Returns { doc, unitCost } or null if it never settled / product gone.
+ * Returns { doc, unitCost, prev, next } or null if it never settled / product gone.
  */
 export async function applyReceipt({ read, cas, qty, unitCost, retries = 5 }) {
   for (let i = 0; i < retries; i += 1) {
@@ -25,7 +25,7 @@ export async function applyReceipt({ read, cas, qty, unitCost, retries = 5 }) {
       costPrice: weightedCost(prev.stock, prev.costPrice, qty, cost),
     };
     const doc = await cas(prev, next);
-    if (doc) return { doc, unitCost: cost };
+    if (doc) return { doc, unitCost: cost, prev, next };
   }
   return null;
 }

@@ -31,7 +31,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
     filter.$or = [{ name: rx }, { sku: rx }, { barcode: rx }];
   }
   if (lowStock === '1') filter.$expr = { $lte: ['$stock', '$reorderLevel'] };
-  const query = Product.find(filter).sort({ name: 1 }).limit(1000);
+  const query = Product.find(filter).sort({ name: 1 }).limit(5000);
   if (req.user.role !== 'owner') query.select('-costPrice'); // cashiers never see cost
   res.json(await query);
 }));
@@ -71,6 +71,7 @@ router.delete('/:id', requireAuth, requireOwner, asyncHandler(async (req, res) =
   assertId(req.params.id);
   const product = await Product.findByIdAndUpdate(req.params.id, { active: false }, { new: true });
   if (!product) return res.status(404).json({ error: 'Product not found' });
+  audit({ req, action: 'product.delete', target: product.name, targetId: product._id });
   res.json(product);
 }));
 

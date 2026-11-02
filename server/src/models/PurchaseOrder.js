@@ -25,6 +25,7 @@ const schema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     receivedAt: { type: Date, default: null },
+    rev: { type: Number, default: 0 }, // optimistic lock for receiving
   },
   { timestamps: true },
 );

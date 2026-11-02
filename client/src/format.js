@@ -6,3 +6,12 @@ export const todayStr = () => new Date().toISOString().slice(0, 10);
 export const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 export const METHODS = ['Cash', 'MoMo', 'Card', 'Transfer'];
 export const SHOP_NAME = import.meta.env.VITE_SHOP_NAME || 'Posify';
+
+// Unique id for idempotency keys. crypto.randomUUID only exists on HTTPS/localhost, and shops often
+// run the till over plain http on the local network, so fall back to getRandomValues.
+export const newId = () => {
+  try { if (crypto.randomUUID) return crypto.randomUUID(); } catch { /* fall through */ }
+  const bytes = new Uint8Array(16);
+  try { crypto.getRandomValues(bytes); } catch { for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256); }
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+};

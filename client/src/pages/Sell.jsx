@@ -3,9 +3,12 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, useToast } from '../ui.jsx';
 import Receipt from '../Receipt.jsx';
-import { dateTime, fmt, METHODS, qtyFmt, r2 } from '../format.js';
+import { dateTime, fmt, METHODS, newId, qtyFmt, r2 } from '../format.js';
 import { cacheProducts, getCachedProducts } from '../offlineDb.js';
 import { useOfflineSync } from '../offlineSync.js';
+
+// Most of a product that can go in the cart: whole packs when selling by the pack, else pieces.
+const maxQty = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1 ? Math.floor(p.stock / p.unitsPerPack) : p.stock);
 
 export default function Sell() {
   const toast = useToast();
@@ -81,9 +84,10 @@ export default function Sell() {
     if (p.stock <= 0) return toast(`${p.name} is out of stock`, 'err');
     setCart((c) => {
       const hit = c.find((l) => l.id === p._id);
-      const defaultUnit = p.unitsPerPack > 1 ? 'pack' : 'piece';
+      // Sell by the pack only while at least one full pack is in stock.
+      const defaultUnit = p.unitsPerPack > 1 && p.stock >= p.unitsPerPack ? 'pack' : 'piece';
       if (!hit) return [...c, { id: p._id, qty: 1, discount: '', unit: defaultUnit }];
-      if (hit.qty + 1 > p.stock) { toast(`Only ${qtyFmt(p.stock)} of ${p.name} in stock`, 'err'); return c; }
+      if (hit.qty + 1 > maxQty(p, hit.unit)) { toast(`Only ${qtyFmt(p.stock)} of ${p.name} in stock`, 'err'); return c; }
       return c.map((l) => (l.id === p._id ? { ...l, qty: l.qty + 1 } : l));
     });
   };
@@ -249,7 +253,7 @@ export default function Sell() {
                 )}
                 <input
                   type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
-                  onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, l.unit === 'pack' ? Math.floor(l.p.stock / l.p.unitsPerPack) : l.p.stock) })}
+                  onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, maxQty(l.p, l.unit)) })}
                 />
                 <span className="line-meta">{fmt(l.price)} × {l.qty}</span>
                 <strong className="line-total">{fmt(l.total)}</strong>
@@ -400,6 +404,9 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
   const [customerId, setCustomerId] = useState('');
   const [busy, setBusy] = useState(false);
   const [newName, setNewName] = useState('');
+  // One key per payment attempt: if the reply is lost and the cashier taps again, the server
+  // returns the first sale instead of creating a second.
+  const clientId = useRef(newId());
 
   const paid = r2(rows.reduce((s, r) => s + (Number(r.amount) || 0), 0));
   const remaining = r2(Math.max(total - paid, 0));
@@ -421,7 +428,7 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
     setBusy(true);
     try {
       const payments = rows.filter((r) => Number(r.amount) > 0).map((r) => ({ method: r.method, amount: Number(r.amount) }));
-      onDone(await api('/sales', { method: 'POST', body: build(payments, customerId) }));
+      onDone(await api('/sales', { method: 'POST', body: { ...build(payments, customerId), clientId: clientId.current } }));
     } catch (e) { toast(e.message, 'err'); setBusy(false); }
   };
 

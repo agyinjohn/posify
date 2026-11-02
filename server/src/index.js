@@ -23,4 +23,10 @@ if (process.env.SEED_OWNER_PASSWORD) {
   }
 }
 
-createApp().listen(config.port, () => console.log(`POS server on http://localhost:${config.port}`));
+const server = createApp().listen(config.port, () => console.log(`POS server on http://localhost:${config.port}`));
+
+// Log stray promise errors instead of dying silently, and finish in-flight requests on shutdown.
+process.on('unhandledRejection', (err) => console.error('Unhandled rejection', err));
+const shutdown = () => server.close(() => mongoose.disconnect().finally(() => process.exit(0)));
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
