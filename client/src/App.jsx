@@ -48,7 +48,7 @@ function Topbar({ user, onQueue, logout, onMenu }) {
       </div>
       <div className="topbar-right">
         <span className={`topbar-status ${online ? 'online' : 'offline'}`}>
-          <span className="status-dot" />{online ? 'Online' : 'Offline'}
+          <span className="status-dot" /><span className="status-text">{online ? 'Online' : 'Offline'}</span>
         </span>
         <QueueBadge onClick={onQueue} />
         <div className="topbar-user-wrap">

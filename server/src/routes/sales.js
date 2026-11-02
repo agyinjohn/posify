@@ -104,6 +104,7 @@ router.post('/', asyncHandler(async (req, res) => {
       balance: settled.balance,
       customer: customer?._id,
       customerName: customer?.name,
+      customerPhone: customer?.phone || undefined,
       note: typeof note === 'string' ? note.slice(0, 200) : undefined,
       cashier: req.user._id,
     });

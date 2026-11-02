@@ -6,6 +6,7 @@ import Receipt from '../Receipt.jsx';
 import { dateTime, fmt, METHODS, newId, qtyFmt, r2 } from '../format.js';
 import { cacheProducts, getCachedProducts } from '../offlineDb.js';
 import { useOfflineSync } from '../offlineSync.js';
+import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
 
 // Most of a product that can go in the cart: whole packs when selling by the pack, else pieces.
 const maxQty = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1 ? Math.floor(p.stock / p.unitsPerPack) : p.stock);
@@ -230,6 +231,12 @@ export default function Sell() {
           </div>
         </div>
 
+        {/* Same actions as the banner, kept next to Charge so they are never missed on a phone */}
+        <div className="cart-shift">
+          {shift === null && <><span>No shift is open</span><button className="primary" onClick={() => setShowOpenShift(true)}>Open shift</button></>}
+          {shift && <><span>Shift open · {shift.openedBy?.name ?? shift.openedByName}</span><button onClick={() => setShowCloseShift(true)}>Close shift</button></>}
+        </div>
+
         <div className="lines">
           {lines.length === 0 && (
             <div className="cart-empty">
@@ -403,7 +410,6 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
   const [rows, setRows] = useState([{ method: 'Cash', amount: String(total) }]);
   const [customerId, setCustomerId] = useState('');
   const [busy, setBusy] = useState(false);
-  const [newName, setNewName] = useState('');
   // One key per payment attempt: if the reply is lost and the cashier taps again, the server
   // returns the first sale instead of creating a second.
   const clientId = useRef(newId());
@@ -417,12 +423,6 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
 
   const addRow = (method) => setRows((r) => [...r, { method, amount: remaining > 0 ? String(remaining) : '' }]);
   const setRow = (i, amount) => setRows((r) => r.map((x, j) => (j === i ? { ...x, amount } : x)));
-
-  const addCustomer = async () => {
-    if (!newName.trim()) return;
-    try { const c = await api('/customers', { method: 'POST', body: { name: newName.trim() } }); onCustomerAdded(c); setCustomerId(c._id); setNewName(''); }
-    catch (e) { toast(e.message, 'err'); }
-  };
 
   const submit = async () => {
     setBusy(true);
@@ -450,18 +450,11 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
         {remaining > 0 && <div className="row warn"><span>Left to pay (credit)</span><strong>{fmt(remaining)}</strong></div>}
       </div>
       {overNonCash && <div className="error">Only cash can be over the total. Lower the MoMo / card / transfer amount.</div>}
-      {remaining > 0 && (
-        <div className="credit">
-          <label className="field"><span>Customer who owes {fmt(remaining)}</span>
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-              <option value="">Choose a customer</option>
-              {customers.map((c) => <option key={c._id} value={c._id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>)}
-            </select></label>
-          <div className="inline"><input placeholder="Or add new customer name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button onClick={addCustomer}>Add customer</button></div>
-        </div>
-      )}
-      <div className="actions">
+      <CustomerPicker
+        customers={customers} value={customerId} onChange={setCustomerId} onAdded={onCustomerAdded}
+        required={remaining > 0} owed={remaining}
+      />
+      <div className="actions sticky-actions">
         <button className="primary big" disabled={busy || overNonCash || needsCustomer} onClick={submit}>
           {busy ? 'Saving…' : remaining > 0 ? 'Complete as credit sale' : 'Complete sale'}
         </button>
@@ -470,88 +463,72 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
   );
 }
 
-function OpenShiftModal({ onClose, onOpened }) {
+// Optional on any sale (the name and phone then print on the receipt); required when part of the sale is on credit.
+function CustomerPicker({ customers, value, onChange, onAdded, required, owed }) {
   const toast = useToast();
-  const [float, setFloat] = useState('0');
-  const [note, setNote] = useState('');
+  const [q, setQ] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
-  const submit = async (e) => {
-    e.preventDefault(); setBusy(true);
+
+  const chosen = customers.find((c) => c._id === value);
+  const t = q.trim().toLowerCase();
+  const matches = (t ? customers.filter((c) => c.name.toLowerCase().includes(t) || (c.phone || '').includes(t)) : customers).slice(0, 5);
+
+  const add = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
     try {
-      const shift = await api('/shifts/open', { method: 'POST', body: { openingFloat: Number(float) || 0, note } });
-      toast('Shift opened'); onOpened(shift);
-    } catch (err) { toast(err.message, 'err'); setBusy(false); }
+      const c = await api('/customers', { method: 'POST', body: { name: name.trim(), phone: phone.trim() || undefined } });
+      onAdded(c); onChange(c._id);
+      setAdding(false); setName(''); setPhone(''); setQ('');
+    } catch (e) { toast(e.message, 'err'); }
+    setBusy(false);
   };
+
   return (
-    <Modal title="Open shift" onClose={onClose}>
-      <form onSubmit={submit}>
-        <Field label="Opening float (cash in drawer, GH₵)">
-          <input type="number" min="0" step="0.01" value={float} onChange={(e) => setFloat(e.target.value)} />
-        </Field>
-        <Field label="Note (optional)">
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Morning shift" />
-        </Field>
-        <div className="actions"><button className="primary" disabled={busy}>Open shift</button></div>
-      </form>
-    </Modal>
-  );
-}
+    <div className={`customer-pick${required ? ' required' : ''}`}>
+      <div className="customer-pick-head">
+        <strong>Customer</strong>
+        <span className="hint">{required ? `Required: ${fmt(owed)} is on credit` : 'Optional. Shown on the receipt'}</span>
+      </div>
 
-function CloseShiftModal({ shift, onClose, onClosed }) {
-  const toast = useToast();
-  const [cash, setCash] = useState('');
-  const [note, setNote] = useState('');
-  const [summary, setSummary] = useState(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (e) => {
-    e.preventDefault(); setBusy(true);
-    try {
-      const res = await api(`/shifts/${shift._id}/close`, { method: 'POST', body: { closingCash: Number(cash) || 0, note } });
-      setSummary(res.summary);
-      toast('Shift closed');
-    } catch (err) { toast(err.message, 'err'); setBusy(false); }
-  };
-
-  if (summary) {
-    return (
-      <Modal title="Shift closed — summary" onClose={onClosed}>
-        <div className="stats">
-          <div><span>Sales</span><strong>{summary.salesCount}</strong></div>
-          <div className="key"><span>Total sold</span><strong>{fmt(summary.total)}</strong></div>
-          <div><span>Discounts</span><strong>{fmt(summary.discounts)}</strong></div>
-          <div><span>Sold on credit</span><strong>{fmt(summary.creditGiven)}</strong></div>
-          <div><span>Debts collected</span><strong>{fmt(summary.debtCollected)}</strong></div>
-          {summary.refunded > 0 && <div><span>Refunded</span><strong>{fmt(summary.refunded)}</strong></div>}
+      {chosen ? (
+        <div className="customer-chosen">
+          <div>
+            <strong>{chosen.name}</strong>
+            {chosen.phone && <small>{chosen.phone}</small>}
+            {chosen.balance > 0 && <small className="owes">Owes {fmt(chosen.balance)}</small>}
+          </div>
+          <button type="button" onClick={() => onChange('')}>Change</button>
         </div>
-        <h3>By payment method</h3>
-        <div className="tablewrap narrow"><table><tbody>
-          {Object.entries(summary.byMethod).map(([m, v]) => (
-            <tr key={m}><td>{m}</td><td className="num">{fmt(v)}</td></tr>
-          ))}
-        </tbody></table></div>
-        <div className="stats">
-          <div><span>Expected cash</span><strong>{fmt(summary.expectedCash)}</strong></div>
-          <div className={summary.cashVariance < 0 ? 'key owes' : 'key'}>
-            <span>Cash variance</span><strong>{fmt(summary.cashVariance)}</strong>
+      ) : adding ? (
+        <div className="customer-new">
+          <input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+          <input placeholder="Phone (optional)" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <div className="customer-new-actions">
+            <button type="button" onClick={() => setAdding(false)}>Cancel</button>
+            <button type="button" className="primary" disabled={busy || !name.trim()} onClick={add}>Save customer</button>
           </div>
         </div>
-        <div className="actions"><button className="primary" onClick={onClosed}>Done</button></div>
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal title="Close shift" onClose={onClose}>
-      <form onSubmit={submit}>
-        <Field label="Cash in drawer now (GH₵)" hint="Count the physical cash and enter the total">
-          <input type="number" min="0" step="0.01" value={cash} onChange={(e) => setCash(e.target.value)} required />
-        </Field>
-        <Field label="Note (optional)">
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. End of day" />
-        </Field>
-        <div className="actions"><button className="primary" disabled={busy}>Close shift &amp; see summary</button></div>
-      </form>
-    </Modal>
+      ) : (
+        <>
+          <input placeholder="Search customer by name or phone" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" aria-label="Search customers" />
+          <ul className="customer-results">
+            {matches.map((c) => (
+              <li key={c._id}>
+                <button type="button" onClick={() => { onChange(c._id); setQ(''); }}>
+                  <span>{c.name}</span>
+                  <small>{c.phone || ''}{c.balance > 0 ? `${c.phone ? ' · ' : ''}owes ${fmt(c.balance)}` : ''}</small>
+                </button>
+              </li>
+            ))}
+            {matches.length === 0 && <li className="customer-none">No customer found{customers.length === 0 ? ' (add one below)' : ''}.</li>}
+          </ul>
+          <button type="button" className="customer-add" onClick={() => { setAdding(true); setName(q.trim()); }}>+ Add new customer</button>
+        </>
+      )}
+    </div>
   );
 }
