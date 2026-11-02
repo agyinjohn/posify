@@ -410,7 +410,6 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
   const [rows, setRows] = useState([{ method: 'Cash', amount: String(total) }]);
   const [customerId, setCustomerId] = useState('');
   const [busy, setBusy] = useState(false);
-  const [newName, setNewName] = useState('');
   // One key per payment attempt: if the reply is lost and the cashier taps again, the server
   // returns the first sale instead of creating a second.
   const clientId = useRef(newId());
@@ -424,12 +423,6 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
 
   const addRow = (method) => setRows((r) => [...r, { method, amount: remaining > 0 ? String(remaining) : '' }]);
   const setRow = (i, amount) => setRows((r) => r.map((x, j) => (j === i ? { ...x, amount } : x)));
-
-  const addCustomer = async () => {
-    if (!newName.trim()) return;
-    try { const c = await api('/customers', { method: 'POST', body: { name: newName.trim() } }); onCustomerAdded(c); setCustomerId(c._id); setNewName(''); }
-    catch (e) { toast(e.message, 'err'); }
-  };
 
   const submit = async () => {
     setBusy(true);
@@ -457,22 +450,85 @@ function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded })
         {remaining > 0 && <div className="row warn"><span>Left to pay (credit)</span><strong>{fmt(remaining)}</strong></div>}
       </div>
       {overNonCash && <div className="error">Only cash can be over the total. Lower the MoMo / card / transfer amount.</div>}
-      {remaining > 0 && (
-        <div className="credit">
-          <label className="field"><span>Customer who owes {fmt(remaining)}</span>
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-              <option value="">Choose a customer</option>
-              {customers.map((c) => <option key={c._id} value={c._id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>)}
-            </select></label>
-          <div className="inline"><input placeholder="Or add new customer name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button onClick={addCustomer}>Add customer</button></div>
-        </div>
-      )}
-      <div className="actions">
+      <CustomerPicker
+        customers={customers} value={customerId} onChange={setCustomerId} onAdded={onCustomerAdded}
+        required={remaining > 0} owed={remaining}
+      />
+      <div className="actions sticky-actions">
         <button className="primary big" disabled={busy || overNonCash || needsCustomer} onClick={submit}>
           {busy ? 'Saving…' : remaining > 0 ? 'Complete as credit sale' : 'Complete sale'}
         </button>
       </div>
     </Modal>
+  );
+}
+
+// Optional on any sale (the name and phone then print on the receipt); required when part of the sale is on credit.
+function CustomerPicker({ customers, value, onChange, onAdded, required, owed }) {
+  const toast = useToast();
+  const [q, setQ] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const chosen = customers.find((c) => c._id === value);
+  const t = q.trim().toLowerCase();
+  const matches = (t ? customers.filter((c) => c.name.toLowerCase().includes(t) || (c.phone || '').includes(t)) : customers).slice(0, 5);
+
+  const add = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      const c = await api('/customers', { method: 'POST', body: { name: name.trim(), phone: phone.trim() || undefined } });
+      onAdded(c); onChange(c._id);
+      setAdding(false); setName(''); setPhone(''); setQ('');
+    } catch (e) { toast(e.message, 'err'); }
+    setBusy(false);
+  };
+
+  return (
+    <div className={`customer-pick${required ? ' required' : ''}`}>
+      <div className="customer-pick-head">
+        <strong>Customer</strong>
+        <span className="hint">{required ? `Required: ${fmt(owed)} is on credit` : 'Optional. Shown on the receipt'}</span>
+      </div>
+
+      {chosen ? (
+        <div className="customer-chosen">
+          <div>
+            <strong>{chosen.name}</strong>
+            {chosen.phone && <small>{chosen.phone}</small>}
+            {chosen.balance > 0 && <small className="owes">Owes {fmt(chosen.balance)}</small>}
+          </div>
+          <button type="button" onClick={() => onChange('')}>Change</button>
+        </div>
+      ) : adding ? (
+        <div className="customer-new">
+          <input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+          <input placeholder="Phone (optional)" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <div className="customer-new-actions">
+            <button type="button" onClick={() => setAdding(false)}>Cancel</button>
+            <button type="button" className="primary" disabled={busy || !name.trim()} onClick={add}>Save customer</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <input placeholder="Search customer by name or phone" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" aria-label="Search customers" />
+          <ul className="customer-results">
+            {matches.map((c) => (
+              <li key={c._id}>
+                <button type="button" onClick={() => { onChange(c._id); setQ(''); }}>
+                  <span>{c.name}</span>
+                  <small>{c.phone || ''}{c.balance > 0 ? `${c.phone ? ' · ' : ''}owes ${fmt(c.balance)}` : ''}</small>
+                </button>
+              </li>
+            ))}
+            {matches.length === 0 && <li className="customer-none">No customer found{customers.length === 0 ? ' (add one below)' : ''}.</li>}
+          </ul>
+          <button type="button" className="customer-add" onClick={() => { setAdding(true); setName(q.trim()); }}>+ Add new customer</button>
+        </>
+      )}
+    </div>
   );
 }

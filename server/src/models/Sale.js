@@ -38,6 +38,7 @@ const schema = new mongoose.Schema(
     balance: { type: Number, default: 0 }, // owed on credit at time of sale
     customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
     customerName: String,
+    customerPhone: String, // snapshot, printed on the receipt when provided
     note: { type: String, trim: true, maxlength: 200 },
     cashier: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     status: { type: String, enum: ['completed', 'voided', 'partial-return'], default: 'completed' },

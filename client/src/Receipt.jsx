@@ -14,7 +14,7 @@ export default function Receipt({ sale }) {
       <h3>{SHOP_NAME}</h3>
       <p className="center">{sale.receiptNo} · {dateTime(sale.createdAt)}</p>
       {sale.cashier?.name && <p className="center">Served by {sale.cashier.name}</p>}
-      {sale.customerName && <p className="center">Customer: {sale.customerName}</p>}
+      {sale.customerName && <p className="center">Customer: {sale.customerName}{sale.customerPhone ? ` · ${sale.customerPhone}` : ''}</p>}
       {sale.status === 'voided' && <p className="center void">VOIDED</p>}
       <table>
         <tbody>
