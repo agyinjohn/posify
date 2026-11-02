@@ -1,5 +1,12 @@
 import { dateTime, fmt, qtyFmt, SHOP_NAME } from './format.js';
 
+// "2 ctn + 3 pcs (27 pcs)" when a product was sold as packs and loose pieces together.
+const qtyLabel = (it) => {
+  if (!it.packQty) return qtyFmt(it.qty);
+  const loose = it.loosePcs ? ` + ${qtyFmt(it.loosePcs)} pcs` : '';
+  return `${qtyFmt(it.packQty)} ${it.packLabel}${loose} (${qtyFmt(it.qty)} pcs)`;
+};
+
 export default function Receipt({ sale }) {
   if (sale._offlineQueued) return null; // stub — caller renders its own notice
   return (
@@ -13,7 +20,7 @@ export default function Receipt({ sale }) {
         <tbody>
           {sale.items.map((it, i) => (
             <tr key={i}>
-              <td>{it.name}<br /><small>{it.packQty ? `${qtyFmt(it.packQty)} ${it.packLabel} (${qtyFmt(it.qty)} pcs)` : qtyFmt(it.qty)} × {fmt(it.unitPrice)}{it.discount ? ` (−${fmt(it.discount)})` : ''}</small></td>
+              <td>{it.name}<br /><small>{qtyLabel(it)} × {fmt(it.unitPrice)}{it.discount ? ` (−${fmt(it.discount)})` : ''}</small></td>
               <td className="num">{fmt(it.lineTotal)}</td>
             </tr>
           ))}

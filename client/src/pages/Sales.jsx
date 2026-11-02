@@ -6,6 +6,7 @@ import { Field, Modal, RefreshIndicator, TableSkeleton, useToast } from '../ui.j
 import Receipt from '../Receipt.jsx';
 import { dateTime, fmt, qtyFmt, todayStr, r2 } from '../format.js';
 
+const PAGE_SIZE = 200;
 const METHODS = ['Cash', 'MoMo', 'Card', 'Transfer'];
 const STATUS_LABEL = { completed: 'Completed', voided: 'Voided', 'partial-return': 'Part. return' };
 const STATUS_CLASS = { completed: 'badge-green', voided: 'badge-red', 'partial-return': 'badge-amber' };
@@ -17,6 +18,7 @@ export default function Sales() {
   const [to, setTo] = useState(todayStr());
   const [sales, setSales] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [view, setView] = useState(null);
   const [voiding, setVoiding] = useState(null);
   const [returning, setReturning] = useState(null);
@@ -28,6 +30,17 @@ export default function Sales() {
       .catch((e) => toast(e.message, 'err'));
   }, [from, to, toast]);
   useEffect(() => { load(); }, [load]);
+
+  // The server returns 200 sales per page; a full page means there may be more.
+  const hasMore = sales !== null && sales.length > 0 && sales.length % PAGE_SIZE === 0;
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const more = await api(`/sales?from=${from}&to=${to}&skip=${sales.length}`);
+      setSales((cur) => [...cur, ...more.filter((m) => !cur.some((c) => c._id === m._id))]);
+    } catch (e) { toast(e.message, 'err'); }
+    setLoadingMore(false);
+  };
 
   const doVoid = async () => {
     try {
@@ -105,6 +118,12 @@ export default function Sales() {
           </tbody>
         </table>
       </div>
+
+      {hasMore && (
+        <div className="actions" style={{ justifyContent: 'center' }}>
+          <button onClick={loadMore} disabled={loadingMore}>{loadingMore ? 'Loading…' : `Load more (showing ${sales.length})`}</button>
+        </div>
+      )}
 
       {/* View receipt modal */}
       {view && (

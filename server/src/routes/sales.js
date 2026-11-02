@@ -111,24 +111,30 @@ router.post('/', asyncHandler(async (req, res) => {
   res.status(201).json(serialize(sale, req.user));
 }));
 
+const PAGE_SIZE = 200;
+
+// Newest first. Page with ?skip=N (the client asks for the next page while a full page comes back).
 router.get('/', asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.from || req.query.to) {
     const { start, end } = dayRange(req.query.from, req.query.to);
     filter.createdAt = { $gte: start, $lt: end };
   }
-  if (['completed', 'voided'].includes(req.query.status)) filter.status = req.query.status;
+  if (['completed', 'voided', 'partial-return'].includes(req.query.status)) filter.status = req.query.status;
   if (req.user.role !== 'owner') filter.cashier = req.user._id; // cashiers see their own sales only
-  const sales = await Sale.find(filter).sort({ createdAt: -1 }).limit(200).populate('cashier', 'name');
+  const skip = Math.min(Math.max(parseInt(req.query.skip, 10) || 0, 0), 1e6);
+  const sales = await Sale.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(PAGE_SIZE).populate('cashier', 'name');
   res.json(sales.map((s) => serialize(s, req.user)));
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
   assertId(req.params.id);
-  const sale = await Sale.findById(req.params.id).populate('cashier', 'name');
-  if (!sale || (req.user.role !== 'owner' && String(sale.cashier._id) !== String(req.user._id))) {
+  const sale = await Sale.findById(req.params.id);
+  // Check ownership on the raw id: the cashier account may have been deleted since the sale.
+  if (!sale || (req.user.role !== 'owner' && String(sale.cashier) !== String(req.user._id))) {
     return res.status(404).json({ error: 'Sale not found' });
   }
+  await sale.populate('cashier', 'name');
   res.json(serialize(sale, req.user));
 }));
 
