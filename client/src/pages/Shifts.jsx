@@ -2,19 +2,40 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../ui.jsx';
 import { dateTime, fmt } from '../format.js';
+import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
 
 export default function Shifts() {
   const toast = useToast();
   const [shifts, setShifts] = useState([]);
+  const [current, setCurrent] = useState(undefined); // undefined = loading, null = none open
+  const [dialog, setDialog] = useState(null); // 'open' | 'close'
 
   const load = useCallback(() => {
     api('/shifts').then(setShifts).catch((e) => toast(e.message, 'err'));
+    api('/shifts/current').then(setCurrent).catch(() => setCurrent(null));
   }, [toast]);
   useEffect(load, [load]);
 
   return (
     <div className="page">
       <h1>Shifts</h1>
+      <div className="card shift-now">
+        {current === undefined && <span className="hint">Checking the current shift…</span>}
+        {current === null && (
+          <>
+            <div><strong>No shift is open</strong><small>Open one before the first sale so cash-up matches the drawer.</small></div>
+            <button className="primary" onClick={() => setDialog('open')}>Open shift</button>
+          </>
+        )}
+        {current && (
+          <>
+            <div><strong>Shift open</strong><small>Since {dateTime(current.createdAt)} · {current.openedBy?.name ?? current.openedByName} · float {fmt(current.openingFloat)}</small></div>
+            <button onClick={() => setDialog('close')}>Close shift</button>
+          </>
+        )}
+      </div>
+      {dialog === 'open' && <OpenShiftModal onClose={() => setDialog(null)} onOpened={() => { setDialog(null); load(); }} />}
+      {dialog === 'close' && current && <CloseShiftModal shift={current} onClose={() => setDialog(null)} onClosed={() => { setDialog(null); load(); }} />}
       <div className="tablewrap"><table>
         <thead>
           <tr>

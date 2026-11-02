@@ -417,7 +417,7 @@ tr.sum td { font-weight: 800; background: #F7F8FA; }
 .pay-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
 
 /* Modal / payment */
-.scrim { position: fixed; inset: 0; background: rgba(23, 33, 43, .55); display: grid; place-items: center; padding: 1rem; z-index: 20; overflow-y: auto; }
+.scrim { position: fixed; inset: 0; background: rgba(23, 33, 43, .55); display: grid; place-items: center; padding: 1rem; z-index: 45; overflow-y: auto; } /* above the phone cart sheet (30), below the nav drawer (50) and toasts (60) */
 .modal { background: var(--surface); border-radius: 12px; padding: 1.2rem; width: min(480px, 100%); max-height: 94vh; overflow-y: auto; }
 .modal.wide { width: min(720px, 100%); }
 .modal header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .8rem; }
@@ -902,7 +902,7 @@ img, video { max-width: 100%; }
   button { min-height: 2.75rem; }
   h1 { font-size: 1.35rem; }
 
-  .topbar-sub, .topbar-status { display: none; } /* offline state still shows in the queue badge and Sell banner */
+  .topbar-sub, .status-text { display: none; } /* the coloured dot still shows online/offline */
   .head { flex-direction: column; align-items: stretch; }
   .filters { gap: .6rem; }
   .filters > .field { flex: 1 1 140px; }
@@ -969,4 +969,24 @@ img, video { max-width: 100%; }
 /* Touch devices: bigger tap targets, no sticky hover lift */
 @media (hover: none) {
   .plist li button:hover:not(:disabled), .product-card:hover, .supplier-card:hover, .user-card:hover { transform: none; }
+}
+
+/* ── Shift controls ── */
+.shift-now { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 0 0 1rem; }
+.shift-now > div { display: flex; flex-direction: column; min-width: 0; }
+.shift-now small { color: var(--muted); }
+.cart-shift { display: none; }
+
+@media (max-width: 900px) {
+  /* Shift banner: a real, easy-to-tap button */
+  .sell-banner { padding: .5rem .85rem; font-size: .9rem; flex-wrap: wrap; row-gap: .35rem; }
+  .sell-banner button { min-height: 2.4rem; padding: .3rem .9rem; font-size: .88rem; font-weight: 700; border-radius: 8px; }
+  .cart-shift { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .5rem .85rem; background: var(--amber-bg); border-bottom: 1px solid #EBCB7A; font-size: .88rem; flex-shrink: 0; }
+  .cart-shift button { min-height: 2.4rem; font-size: .88rem; }
+  .shift-now { flex-direction: column; align-items: stretch; }
+  .shift-now button { width: 100%; }
+}
+@media (max-width: 640px) {
+  input[type=checkbox] { width: 22px; height: 22px; }
+  .check { min-height: 2.75rem; }
 }
