@@ -59,6 +59,7 @@ router.post('/', asyncHandler(async (req, res) => {
   // Standalone MongoDB has no transactions, so each step is atomic and we compensate on failure.
   const decremented = [];
   let sale = null;
+  let creditReserved = 0;
   try {
     for (const it of priced.items) {
       const updated = await Product.findOneAndUpdate(
@@ -68,6 +69,14 @@ router.post('/', asyncHandler(async (req, res) => {
       );
       if (!updated) throw new SaleError(`Not enough stock for ${it.name}`, 409);
       decremented.push(it);
+    }
+
+    // Reserve the credit atomically (limit checked inside the update) before the sale exists,
+    // so concurrent credit sales cannot jointly exceed the customer's limit.
+    if (settled.balance > 0) {
+      const reserved = await adjustBalance(customer._id, settled.balance, { maxBalance: customer.creditLimit });
+      if (!reserved) throw new SaleError('This sale would put the customer over their credit limit', 409);
+      creditReserved = settled.balance;
     }
 
     sale = await Sale.create({
@@ -92,8 +101,8 @@ router.post('/', asyncHandler(async (req, res) => {
     await StockMovement.insertMany(
       priced.items.map((it) => ({ product: it.product, type: 'sale', qty: -it.qty, costPrice: it.costPrice, sale: sale._id, user: req.user._id })),
     );
-    if (settled.balance > 0) await adjustBalance(customer._id, settled.balance);
   } catch (err) {
+    if (creditReserved > 0) await adjustBalance(customer._id, -creditReserved).catch(() => {});
     if (sale) await Sale.deleteOne({ _id: sale._id }).catch(() => {});
     await Promise.all(decremented.map((it) => Product.updateOne({ _id: it.product }, { $inc: { stock: it.qty } })));
     throw err;

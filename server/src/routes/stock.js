@@ -8,6 +8,7 @@ import { assertId, num } from '../lib/validate.js';
 import { SaleError } from '../lib/pricing.js';
 import { r2, r3 } from '../lib/money.js';
 import { audit } from '../lib/audit.js';
+import { applyCount } from '../lib/stocktake.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
@@ -59,26 +60,35 @@ router.post('/stocktake', asyncHandler(async (req, res) => {
   const { note, lines } = req.body;
   if (!Array.isArray(lines) || lines.length === 0) throw new SaleError('No lines provided');
 
-  const products = await Product.find({ active: true }).lean();
+  const products = await Product.find({ active: true }).select('name sku').lean();
   const byId = new Map(products.map((p) => [String(p._id), p]));
 
-  const resultLines = [];
-  const adjustments = [];
-
+  const seen = new Set();
+  const counts = [];
   for (const l of lines) {
     assertId(l?.productId, 'product');
-    const counted = r3(num(l.countedQty, 'Counted quantity', { min: 0, max: 1e6 }));
-    const p = byId.get(String(l.productId));
-    if (!p) throw new SaleError(`Product not found: ${l.productId}`, 404);
-    const variance = r3(counted - p.stock);
-    resultLines.push({ product: p._id, name: p.name, sku: p.sku, systemQty: p.stock, countedQty: counted, variance });
-    if (variance !== 0) adjustments.push({ p, variance, counted });
+    const id = String(l.productId);
+    if (seen.has(id)) throw new SaleError('The same product appears twice in this count');
+    seen.add(id);
+    if (!byId.has(id)) throw new SaleError(`Product not found: ${l.productId}`, 404);
+    counts.push({ p: byId.get(id), counted: r3(num(l.countedQty, 'Counted quantity', { min: 0, max: 1e6 })) });
   }
 
-  // Apply all stock adjustments.
-  await Promise.all(adjustments.map(({ p, variance, counted }) =>
-    Product.updateOne({ _id: p._id }, { $set: { stock: counted } }),
-  ));
+  // Each product is set with compare-and-set, so a sale made while this count is being saved
+  // is never wiped: the variance is recomputed against the stock that was really replaced.
+  const resultLines = [];
+  const adjustments = [];
+  const skipped = [];
+  for (const { p, counted } of counts) {
+    const applied = await applyCount({
+      counted,
+      read: async () => (await Product.findById(p._id).select('stock').lean())?.stock ?? null,
+      cas: async (expected, value) => !!(await Product.findOneAndUpdate({ _id: p._id, stock: expected }, { $set: { stock: value } })),
+    });
+    if (!applied) { skipped.push(p.name); continue; }
+    resultLines.push({ product: p._id, name: p.name, sku: p.sku, systemQty: applied.systemQty, countedQty: counted, variance: applied.variance });
+    if (applied.variance !== 0) adjustments.push({ p, variance: applied.variance });
+  }
 
   // Write one adjustment movement per variance line.
   if (adjustments.length > 0) {
@@ -86,7 +96,7 @@ router.post('/stocktake', asyncHandler(async (req, res) => {
       product: p._id,
       type: 'adjustment',
       qty: variance,
-      reason: `Stock take${note ? ': ' + note.slice(0, 160) : ''}`,
+      reason: `Stock take${note ? ': ' + String(note).slice(0, 160) : ''}`,
       user: req.user._id,
     })));
   }
@@ -101,8 +111,8 @@ router.post('/stocktake', asyncHandler(async (req, res) => {
     lines: resultLines,
   });
 
-  audit({ req, action: 'stocktake', detail: { linesCount: resultLines.length, varianceCount } });
-  res.status(201).json(stockTake);
+  audit({ req, action: 'stocktake', detail: { linesCount: resultLines.length, varianceCount, skipped } });
+  res.status(201).json({ ...stockTake.toObject(), skipped });
 }));
 
 // Stock take history (summary only, no lines).
