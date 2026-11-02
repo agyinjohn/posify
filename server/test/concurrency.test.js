@@ -50,3 +50,51 @@ test('credit limit is part of the atomic filter', () => {
   assert.deepEqual(balanceFilter('c', -40, { maxBalance: 100 }), { _id: 'c' }); // reductions are never blocked
   assert.deepEqual(balanceFilter('c', -40, { requireCovered: true }), { _id: 'c', balance: { $gte: 39.995 } });
 });
+
+import { weightedCost, applyReceipt } from '../src/lib/cost.js';
+
+const makeProduct = (stock, costPrice, onRead) => {
+  const doc = { stock, costPrice };
+  return {
+    doc,
+    read: async () => { const v = { ...doc }; if (onRead) onRead(doc); return v; },
+    cas: async (prev, next) => {
+      if (doc.stock !== prev.stock || doc.costPrice !== prev.costPrice) return null;
+      Object.assign(doc, next); return { ...doc };
+    },
+  };
+};
+
+test('weighted average cost', () => {
+  assert.equal(weightedCost(10, 4, 10, 6), 5);
+  assert.equal(weightedCost(0, 4, 10, 6), 6); // no stock: new cost wins
+  assert.equal(weightedCost(3, 10, 1, 20), 12.5);
+});
+
+test('receipt updates stock and average cost together', async () => {
+  const p = makeProduct(10, 4);
+  const r = await applyReceipt({ read: p.read, cas: p.cas, qty: 10, unitCost: 6 });
+  assert.deepEqual(p.doc, { stock: 20, costPrice: 5 });
+  assert.equal(r.unitCost, 6);
+});
+
+test('omitted cost keeps the current cost', async () => {
+  const p = makeProduct(10, 4);
+  const r = await applyReceipt({ read: p.read, cas: p.cas, qty: 5, unitCost: undefined });
+  assert.deepEqual(p.doc, { stock: 15, costPrice: 4 });
+  assert.equal(r.unitCost, 4);
+});
+
+test('a sale between read and write forces a recompute with the real stock', async () => {
+  let once = true;
+  const p = makeProduct(10, 4, (d) => { if (once) { once = false; d.stock = 2; } }); // 8 sold mid-flight
+  await applyReceipt({ read: p.read, cas: p.cas, qty: 10, unitCost: 6 });
+  // average must use the real 2 units on hand, not the stale 10: (2*4 + 10*6) / 12 = 5.67
+  assert.deepEqual(p.doc, { stock: 12, costPrice: 5.67 });
+});
+
+test('gives up without writing if the product keeps changing, null if gone', async () => {
+  const p = makeProduct(100, 4, (d) => { d.stock -= 1; });
+  assert.equal(await applyReceipt({ read: p.read, cas: p.cas, qty: 1, unitCost: 5, retries: 3 }), null);
+  assert.equal(await applyReceipt({ read: async () => null, cas: async () => null, qty: 1 }), null);
+});

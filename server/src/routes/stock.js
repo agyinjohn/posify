@@ -9,25 +9,37 @@ import { SaleError } from '../lib/pricing.js';
 import { r2, r3 } from '../lib/money.js';
 import { audit } from '../lib/audit.js';
 import { applyCount } from '../lib/stocktake.js';
+import { applyReceipt } from '../lib/cost.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
 
 // Receive stock. Cost price becomes the weighted average of old stock and the new delivery.
-// (Read-then-write: fine for one shop; two owners receiving the same product at the same instant could race.)
+// Compare-and-set on (stock, cost): a sale or another delivery landing mid-update triggers a recompute
+// instead of corrupting the average.
 router.post('/receive', asyncHandler(async (req, res) => {
   const { productId, note } = req.body;
   assertId(productId, 'product');
   const qty = r3(num(req.body.qty, 'Quantity', { min: 0, max: 1e6, allowZero: false }));
-  const product = await Product.findById(productId);
-  if (!product) return res.status(404).json({ error: 'Product not found' });
+  const unitCost = req.body.costPrice === undefined || req.body.costPrice === '' ? undefined : num(req.body.costPrice, 'Cost price');
 
-  const unitCost = req.body.costPrice === undefined || req.body.costPrice === '' ? product.costPrice : num(req.body.costPrice, 'Cost price');
-  const newCost = product.stock > 0 ? r2((product.stock * product.costPrice + qty * unitCost) / (product.stock + qty)) : r2(unitCost);
-
-  const updated = await Product.findByIdAndUpdate(productId, { $inc: { stock: qty }, $set: { costPrice: newCost } }, { new: true });
-  await StockMovement.create({ product: productId, type: 'receipt', qty, costPrice: unitCost, reason: typeof note === 'string' ? note.slice(0, 200) : undefined, user: req.user._id });
-  res.status(201).json(updated);
+  const result = await applyReceipt({
+    qty,
+    unitCost,
+    read: async () => Product.findById(productId).select('stock costPrice').lean(),
+    cas: (prev, next) => Product.findOneAndUpdate(
+      { _id: productId, stock: prev.stock, costPrice: prev.costPrice },
+      { $set: next },
+      { new: true },
+    ),
+  });
+  if (!result) {
+    const exists = await Product.exists({ _id: productId });
+    if (!exists) return res.status(404).json({ error: 'Product not found' });
+    throw new SaleError('Stock kept changing while receiving. Please try again', 409);
+  }
+  await StockMovement.create({ product: productId, type: 'receipt', qty, costPrice: result.unitCost, reason: typeof note === 'string' ? note.slice(0, 200) : undefined, user: req.user._id });
+  res.status(201).json(result.doc);
 }));
 
 // Adjust stock up or down (damage, theft, count correction). A reason is mandatory.
