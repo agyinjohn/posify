@@ -112,7 +112,7 @@ export default function Sell() {
           label: holdLabel.trim(),
           mode,
           orderDiscount: od,
-          items: lines.map((l) => ({ productId: l.id, qty: l.qty, discount: l.discount || 0 })),
+          items: lines.map((l) => ({ productId: l.id, qty: l.qty, unit: l.unit, discount: l.discount || 0 })),
         },
       });
       toast('Sale held');
@@ -124,7 +124,10 @@ export default function Sell() {
   const resumeSale = (held) => {
     setMode(held.mode);
     setOrderDiscount(String(held.orderDiscount || ''));
-    setCart(held.items.map((i) => ({ id: String(i.productId), qty: i.qty, discount: i.discount || '' })));
+    setCart(held.items.map((i) => ({ id: String(i.productId), qty: i.qty, unit: i.unit || 'piece', discount: i.discount || '' })));
+    // Products deactivated or deleted since the sale was held can't be sold: say so instead of dropping them silently.
+    const gone = held.items.filter((i) => !byId.has(String(i.productId))).length;
+    if (gone > 0) toast(`${gone} item${gone !== 1 ? 's were' : ' was'} no longer available and left out`, 'err');
     setShowResume(false);
     loadHeldCount();
   };
@@ -325,7 +328,7 @@ export default function Sell() {
           <div className="actions"><button className="primary" onClick={holdSale}>Hold sale</button></div>
         </Modal>
       )}
-      {showResume && <ResumeDrawer onClose={() => setShowResume(false)} onResume={resumeSale} />}
+      {showResume && <ResumeDrawer cartHasItems={cart.length > 0} onClose={() => setShowResume(false)} onResume={resumeSale} />}
       {showOpenShift && (
         <OpenShiftModal onClose={() => setShowOpenShift(false)} onOpened={(s) => { setShift(s); setShowOpenShift(false); }} />
       )}
@@ -337,9 +340,10 @@ export default function Sell() {
   );
 }
 
-function ResumeDrawer({ onClose, onResume }) {
+function ResumeDrawer({ onClose, onResume, cartHasItems }) {
   const toast = useToast();
   const [list, setList] = useState([]);
+  const [confirming, setConfirming] = useState(null); // held sale id awaiting 'replace the cart?' answer
 
   useEffect(() => {
     api('/held-sales').then(setList).catch((e) => toast(e.message, 'err'));
@@ -371,8 +375,18 @@ function ResumeDrawer({ onClose, onResume }) {
             <small>{dateTime(h.createdAt)} · {h.items.length} item{h.items.length !== 1 ? 's' : ''} · {h.mode}{h.cashier?.name ? ` · ${h.cashier.name}` : ''}</small>
           </div>
           <div className="acts">
-            <button className="primary" onClick={() => resume(h)}>Resume</button>
-            <button className="danger" onClick={() => discard(h._id)}>Discard</button>
+            {confirming === h._id ? (
+              <>
+                <small>Replace the current cart?</small>
+                <button className="primary" onClick={() => resume(h)}>Replace</button>
+                <button onClick={() => setConfirming(null)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <button className="primary" onClick={() => (cartHasItems ? setConfirming(h._id) : resume(h))}>Resume</button>
+                <button className="danger" onClick={() => discard(h._id)}>Discard</button>
+              </>
+            )}
           </div>
         </div>
       ))}

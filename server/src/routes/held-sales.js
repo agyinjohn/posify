@@ -2,7 +2,9 @@ import { Router } from 'express';
 import HeldSale from '../models/HeldSale.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import mongoose from 'mongoose';
 import { assertId } from '../lib/validate.js';
+import { cleanHeldItems } from '../lib/held.js';
 import { SaleError } from '../lib/pricing.js';
 
 const router = Router();
@@ -16,9 +18,9 @@ router.get('/', asyncHandler(async (req, res) => {
 
 router.post('/', asyncHandler(async (req, res) => {
   const { items, mode = 'retail', orderDiscount = 0, label = '' } = req.body;
-  if (!Array.isArray(items) || items.length === 0) throw new SaleError('Cart is empty');
-  items.forEach((i) => assertId(i?.productId, 'product'));
-  const held = await HeldSale.create({ cashier: req.user._id, label: String(label).slice(0, 80), mode, orderDiscount: Number(orderDiscount) || 0, items });
+  if (!['retail', 'wholesale'].includes(mode)) throw new SaleError('Invalid sale mode');
+  const clean = cleanHeldItems(items, (id) => mongoose.isValidObjectId(id));
+  const held = await HeldSale.create({ cashier: req.user._id, label: String(label).slice(0, 80), mode, orderDiscount: Math.max(0, Number(orderDiscount) || 0), items: clean });
   res.status(201).json(held);
 }));
 
