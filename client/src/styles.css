@@ -751,7 +751,8 @@ tr.sum td { font-weight: 800; background: #F7F8FA; }
 .product-card-name { font-weight: 700; font-size: .9rem; line-height: 1.3; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .product-card-sku { font-size: .75rem; color: var(--muted); }
 .product-card-prices { display: flex; flex-wrap: wrap; align-items: baseline; gap: .05rem .5rem; margin-top: .15rem; }
-.product-card-price small { font-size: .72rem; font-weight: 600; color: var(--muted); }
+.product-card-price small { display: block; font-size: .72rem; font-weight: 600; color: var(--muted); }
+.product-card-prices { flex-direction: column; align-items: flex-start; } /* amount, then per-piece / wholesale line, never side by side */
 .product-card-price { font-weight: 800; font-size: 1rem; color: var(--indigo); }
 .product-card-ws { font-size: .75rem; color: var(--muted); }
 .product-card-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-top: auto; padding-top: .4rem; gap: .25rem .5rem; }

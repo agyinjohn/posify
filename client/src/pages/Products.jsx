@@ -47,11 +47,11 @@ export default function Products() {
               : <div className="product-card-img placeholder" />}
             <div className="product-card-body">
               <div className="product-card-name">{p.name}{!p.active && <span className="chip chip-muted">inactive</span>}</div>
-              <div className="product-card-sku">{p.sku}{p.category !== 'General' ? ` · ${p.category}` : ''}</div>
+              <div className="product-card-sku">{p.sku}{p.category && p.category !== 'General' ? ` · ${p.category}` : ''}</div>
               <div className="product-card-prices">
                 {unitsOf(p) > 1 ? (
                   <>
-                    <span className="product-card-price">{fmt(toPackPrice(p.retailPrice, unitsOf(p)))}<small> / {packName(p)}</small></span>
+                    <span className="product-card-price">{fmt(toPackPrice(p.retailPrice, unitsOf(p)))}<small> per {packName(p)}</small></span>
                     <span className="product-card-ws">{fmt(p.retailPrice)} each{p.wholesalePrice > 0 ? ` · WS ${fmt(toPackPrice(p.wholesalePrice, unitsOf(p)))}` : ''}</span>
                   </>
                 ) : (
