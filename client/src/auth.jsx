@@ -32,6 +32,12 @@ export function AuthProvider({ children }) {
     setUser(r.user);
   };
   const logout = () => { setToken(''); forgetCaches(); setUser(null); };
+  // Changing the password signs out every other session; this one carries on with the fresh token.
+  const changePassword = async (currentPassword, newPassword) => {
+    const r = await api('/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } });
+    setToken(r.token);
+    setUser(r.user);
+  };
 
-  return <Ctx.Provider value={{ user, loading, login, logout, isOwner: user?.role === 'owner' }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, loading, login, logout, changePassword, isOwner: user?.role === 'owner' }}>{children}</Ctx.Provider>;
 }

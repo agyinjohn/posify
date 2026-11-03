@@ -40,6 +40,23 @@ cd ../server && NODE_ENV=production npm start
 The server serves the built client, so one Node process serves both the site and the API.
 Put it behind HTTPS (Render, Railway, a VPS with Caddy/Nginx). Set `CLIENT_ORIGIN` to the site URL.
 
+## Passwords
+
+- **Change your own:** profile menu (top right), then *Change password*. Every other device you were signed in on is signed out.
+- **Reset someone else's:** owner opens Users, then *Edit*, and types a temporary password. That person is signed out everywhere and must choose their own at their next sign-in.
+- **Owner recovery codes (do this once, today):** profile menu, then *Recovery codes*, enter your password and make a set of 8. Save them somewhere private (password manager, or print the sheet). If you forget your password, click *Forgot your password?* on the sign-in page, enter your username, one code and a new password. Each code works once, and making a new set cancels the old one. The reset signs out every device. A red dot in the profile menu reminds you when none are set up or 2 or fewer are left.
+  - Staff (cashiers) have no codes: the owner resets their password from Users.
+- **Forgot the owner password and have no codes left:** only someone who controls the server can recover it.
+  - **Render:**
+    1. Dashboard, open the web service, then *Environment*.
+    2. Add `RESET_OWNER_PASSWORD` with a temporary password (8+ characters) and save. Render restarts the service.
+    3. Open *Logs* and look for `[reset] Password of owner "…" was reset`. It names the account.
+    4. Sign in with that username and the temporary password. You are asked to choose your own.
+    5. Delete `RESET_OWNER_PASSWORD` from the environment. (Leaving it in is harmless: the same value is applied only once.)
+    - If there is more than one owner, also set `RESET_OWNER_USERNAME`.
+  - **Any machine with a terminal (Render paid Shell, a VPS, your laptop):** `RESET_OWNER_PASSWORD='temporary' npm run reset-owner` in `server/`, or run `npm run reset-owner` and type it when asked.
+  - Either way the account is re-activated if it was disabled, all its sessions are signed out, and the reset is written to the audit log.
+
 ## Desktop app
 
 ```bash
