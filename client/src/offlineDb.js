@@ -104,3 +104,9 @@ export async function getCachedProducts() {
   );
   return row ?? null; // { data, cachedAt } or null
 }
+
+// The offline product list can include cost prices (owner), so it is wiped on sign-out.
+export async function clearProductCache() {
+  const db = await open();
+  return req(db.transaction('product_cache', 'readwrite').objectStore('product_cache').clear());
+}

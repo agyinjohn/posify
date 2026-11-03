@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import { cacheInvalidatePrefix, swrFetch } from '../cache.js';
+import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { dateTime, fmt, qtyFmt } from '../format.js';
+import { hasPack, packName, toPieces, toPiecePrice, toPackPrice, unitsOf } from '../bulk.js';
 
 const MOVE_TYPE_CLASS = {
   sale: 'badge-red', void: 'badge-amber', return: 'badge-amber', receipt: 'badge-green',
@@ -13,14 +14,14 @@ const TABS = [['receive', 'Receive stock'], ['adjust', 'Adjust stock'], ['stockt
 export default function Stock() {
   const toast = useToast();
   const [tab, setTab] = useState('receive');
-  const [products, setProducts] = useState(null);
+  const [products, setProducts] = useState(() => cacheGet('/products'));
   const [refreshing, setRefreshing] = useState(false);
-  const [moves, setMoves] = useState([]);
+  const [moves, setMoves] = useState(() => cacheGet('/stock/movements') ?? []);
 
   const load = useCallback(() => {
     swrFetch('/products', { onData: setProducts, onRefreshing: setRefreshing, ttlMs: 30_000 })
       .catch((e) => toast(e.message, 'err'));
-    api('/stock/movements').then(setMoves).catch(() => {});
+    swrFetch('/stock/movements', { onData: setMoves, ttlMs: 30_000 }).catch(() => {});
   }, [toast]);
   useEffect(() => { load(); }, [load]);
 
@@ -97,15 +98,20 @@ function MoveForm({ kind, products, onSaved }) {
   const [qty, setQty] = useState('');
   const [cost, setCost] = useState('');
   const [reason, setReason] = useState('');
+  const [bulk, setBulk] = useState(true); // receive in packs when the product has a pack size
   const labelOf = (p) => `${p.name} — ${p.sku}`;
   const product = useMemo(() => products.find((p) => labelOf(p) === label), [products, label]);
+  const units = product ? unitsOf(product) : 1;
+  const inPacks = kind === 'receive' && bulk && units > 1;
+  const pack = product ? packName(product) : 'pack';
 
   const submit = async (e) => {
     e.preventDefault();
     if (!product) return toast('Choose a product from the list', 'err');
     try {
-      const body = { productId: product._id, qty: Number(qty) };
-      if (kind === 'receive') { if (cost !== '') body.costPrice = Number(cost); body.note = reason; }
+      // Bulk entry: quantity and cost are typed per pack and sent per piece.
+      const body = { productId: product._id, qty: inPacks ? toPieces(qty, units) : Number(qty) };
+      if (kind === 'receive') { if (cost !== '') body.costPrice = inPacks ? toPiecePrice(cost, units) : Number(cost); body.note = reason; }
       else body.reason = reason;
       await api(`/stock/${kind}`, { method: 'POST', body });
       cacheInvalidatePrefix('/products');
@@ -116,19 +122,31 @@ function MoveForm({ kind, products, onSaved }) {
 
   return (
     <form className="stock-form card grid2" onSubmit={submit} style={{ marginTop: '1rem' }}>
-      <Field label="Product" hint={product ? `In stock: ${qtyFmt(product.stock)} · cost ${fmt(product.costPrice)}` : 'Start typing a name or SKU'}>
+      <Field label="Product" hint={product ? `In stock: ${qtyFmt(product.stock)}${units > 1 ? ' pcs' : ''} · cost ${units > 1 ? `${fmt(toPackPrice(product.costPrice, units))} / ${pack}` : fmt(product.costPrice)}` : 'Start typing a name or SKU'}>
         <input list="stock-products" value={label} onChange={(e) => setLabel(e.target.value)} required placeholder="Type to search…" />
         <datalist id="stock-products">{products.map((p) => <option key={p._id} value={labelOf(p)} />)}</datalist>
       </Field>
+      {kind === 'receive' && units > 1 && (
+        <div className="span2 bulk-mode">
+          <span>Receive and cost per</span>
+          <div className="seg" role="group" aria-label="Receive unit">
+            <button type="button" className={bulk ? 'on' : ''} onClick={() => { setBulk(true); setQty(''); setCost(''); }}>{pack} (of {units})</button>
+            <button type="button" className={!bulk ? 'on' : ''} onClick={() => { setBulk(false); setQty(''); setCost(''); }}>piece</button>
+          </div>
+        </div>
+      )}
       <Field
-        label={kind === 'receive' ? 'Quantity received' : 'Change in quantity'}
-        hint={kind === 'adjust' ? 'Use a minus sign to remove, e.g. −3' : undefined}
+        label={kind === 'receive' ? `Quantity received${inPacks ? ` (${pack}s)` : ''}` : 'Change in quantity'}
+        hint={kind === 'adjust' ? 'Use a minus sign to remove, e.g. −3' : (inPacks && Number(qty) > 0 ? `= ${toPieces(qty, units)} pieces` : undefined)}
       >
-        <input type="number" step="any" min={kind === 'receive' ? '0' : undefined} value={qty} onChange={(e) => setQty(e.target.value)} required />
+        <input type="number" step="any" inputMode="decimal" min={kind === 'receive' ? '0' : undefined} value={qty} onChange={(e) => setQty(e.target.value)} required />
       </Field>
       {kind === 'receive' && (
-        <Field label="Cost per unit (GH₵)" hint="Leave blank to keep current cost — updates to a running average">
-          <input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} />
+        <Field
+          label={`Cost per ${inPacks ? pack : 'unit'} (GH₵)`}
+          hint={inPacks && Number(cost) > 0 ? `= ${fmt(toPiecePrice(cost, units))} per piece` : 'Leave blank to keep current cost. It updates to a running average'}
+        >
+          <input type="number" min="0" step="any" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} />
         </Field>
       )}
       <Field label={kind === 'receive' ? 'Supplier / note (optional)' : 'Reason'}>

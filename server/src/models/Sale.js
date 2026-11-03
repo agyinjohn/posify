@@ -57,5 +57,7 @@ const schema = new mongoose.Schema(
 schema.index({ createdAt: -1 });
 schema.index({ clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
 schema.index({ cashier: 1, createdAt: -1 });
+schema.index({ customer: 1, createdAt: -1 }); // customer history and statements
+schema.index({ status: 1, createdAt: -1 });
 
 export default mongoose.model('Sale', schema);

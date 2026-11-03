@@ -14,4 +14,6 @@ const schema = new mongoose.Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
+schema.index({ createdAt: -1 });
+
 export default mongoose.model('StockMovement', schema);

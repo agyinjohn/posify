@@ -139,7 +139,7 @@ router.get('/', asyncHandler(async (req, res) => {
   if (['completed', 'voided', 'partial-return'].includes(req.query.status)) filter.status = req.query.status;
   if (req.user.role !== 'owner') filter.cashier = req.user._id; // cashiers see their own sales only
   const skip = Math.min(Math.max(parseInt(req.query.skip, 10) || 0, 0), 1e6);
-  const sales = await Sale.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(PAGE_SIZE).populate('cashier', 'name');
+  const sales = await Sale.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(PAGE_SIZE).populate('cashier', 'name').lean();
   res.json(sales.map((s) => serialize(s, req.user)));
 }));
 

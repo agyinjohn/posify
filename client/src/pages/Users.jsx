@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { cacheGet, swrFetch } from '../cache.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, useToast } from '../ui.jsx';
 
@@ -14,10 +15,10 @@ function EyeIcon({ open }) {
 export default function Users() {
   const { user: me } = useAuth();
   const toast = useToast();
-  const [list, setList] = useState([]);
+  const [list, setList] = useState(() => cacheGet('/users') ?? []);
   const [edit, setEdit] = useState(null);
 
-  const load = useCallback(() => { api('/users').then(setList).catch((e) => toast(e.message, 'err')); }, [toast]);
+  const load = useCallback(() => { swrFetch('/users', { onData: setList, ttlMs: 30_000 }).catch((e) => toast(e.message, 'err')); }, [toast]);
   useEffect(load, [load]);
 
   const toggle = async (u) => {

@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { cacheGet, cacheInvalidatePrefix, cacheSet } from '../cache.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, useToast } from '../ui.jsx';
 import Receipt from '../Receipt.jsx';
 import { dateTime, fmt, METHODS, newId, qtyFmt, r2 } from '../format.js';
 import { cacheProducts, getCachedProducts } from '../offlineDb.js';
+import { packName, unitsOf } from '../bulk.js';
 import { useOfflineSync } from '../offlineSync.js';
 import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
 
@@ -17,8 +19,9 @@ export default function Sell() {
   const { online, queue } = useOfflineSync();
   const [cacheAge, setCacheAge] = useState(null);
   const [cartOpen, setCartOpen] = useState(false); // mobile only: cart slides up over the catalog
-  const [products, setProducts] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  // Start from the background-prefetched copies so the till is usable on the very first paint.
+  const [products, setProducts] = useState(() => cacheGet('/products') ?? []);
+  const [customers, setCustomers] = useState(() => cacheGet('/customers?q=') ?? []);
   const [q, setQ] = useState('');
   const [mode, setMode] = useState('retail');
   const [cart, setCart] = useState([]);
@@ -44,13 +47,15 @@ export default function Sell() {
       if (cached) { setProducts(cached.data); setCacheAge(cached.cachedAt); }
       return;
     }
+    // Customers load alongside the products instead of after them.
+    api('/customers?q=').then((cs) => { cacheSet('/customers?q=', cs, 5 * 60_000); setCustomers(cs); }).catch(() => {});
     try {
       const ps = await api('/products');
+      cacheSet('/products', ps, 5 * 60_000);
       setProducts(ps);
       setCacheAge(null);
       cacheProducts(ps).catch(() => {});
     } catch (e) { toast(e.message, 'err'); }
-    api('/customers').then(setCustomers).catch(() => {});
   }, [toast]);
 
   const loadHeldCount = useCallback(() => {
@@ -62,11 +67,12 @@ export default function Sell() {
   const byId = useMemo(() => new Map(products.map((p) => [p._id, p])), [products]);
   const priceOf = useCallback((p) => (mode === 'wholesale' && p.wholesalePrice > 0 ? p.wholesalePrice : p.retailPrice), [mode]);
 
+  const search = useDeferredValue(q); // typing stays instant while a big catalogue is filtered
   const results = useMemo(() => {
-    const t = q.trim().toLowerCase();
+    const t = search.trim().toLowerCase();
     const list = t ? products.filter((p) => [p.name, p.sku, p.barcode].some((v) => v && v.toLowerCase().includes(t))) : products;
     return list.slice(0, 60);
-  }, [products, q]);
+  }, [products, search]);
 
   const lines = cart.filter((c) => byId.has(c.id)).map((c) => {
     const p = byId.get(c.id);
@@ -105,7 +111,10 @@ export default function Sell() {
   };
 
   const done = (sale) => {
-    setPaying(false); setCartOpen(false); setReceipt(sale); setCart([]); setOrderDiscount(''); setQ(''); load();
+    setPaying(false); setCartOpen(false); setReceipt(sale); setCart([]); setOrderDiscount(''); setQ('');
+    // The sale changed stock, balances and today's figures: drop stale copies so other screens refetch.
+    ['/products', '/customers', '/sales', '/reports'].forEach(cacheInvalidatePrefix);
+    load();
   };
 
   const holdSale = async () => {
@@ -196,7 +205,7 @@ export default function Sell() {
           {results.map((p) => (
             <li key={p._id}>
               <button disabled={p.stock <= 0} onClick={() => add(p)}>
-                {p.image?.url && <img className="pcard-img" src={p.image.url} alt="" />}
+                {p.image?.url && <img className="pcard-img" src={p.image.url} alt="" loading="lazy" decoding="async" />}
                 <span className="pname">
                   {p.name}
                   <small>{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack}/${p.packLabel || 'pack'}` : ''}</small>
@@ -205,7 +214,11 @@ export default function Sell() {
                   <span className={`stock${p.stock <= p.reorderLevel ? ' low' : ''}`}>
                     {p.stock <= 0 ? 'Out of stock' : `${qtyFmt(p.stock)} left`}
                   </span>
-                  <span className="price">{fmt(priceOf(p))}</span>
+                  <span className="price">
+                    {p.unitsPerPack > 1 && p.stock >= p.unitsPerPack
+                      ? <>{fmt(priceOf(p) * unitsOf(p))}<small> / {packName(p)}</small></>
+                      : fmt(priceOf(p))}
+                  </span>
                 </span>
               </button>
             </li>
@@ -262,7 +275,7 @@ export default function Sell() {
                   type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
                   onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, maxQty(l.p, l.unit)) })}
                 />
-                <span className="line-meta">{fmt(l.price)} × {l.qty}</span>
+                <span className="line-meta">{l.hasPack && l.unit === 'pack' ? `${fmt(l.price * l.p.unitsPerPack)} / ${packName(l.p)}` : fmt(l.price)} × {l.qty}</span>
                 <strong className="line-total">{fmt(l.total)}</strong>
               </div>
               {l.hasPack && l.unit === 'pack' && (

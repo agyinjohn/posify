@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, download } from '../api.js';
-import { swrFetch } from '../cache.js';
+import { cacheGet, swrFetch } from '../cache.js';
 import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { fmt, qtyFmt, todayStr } from '../format.js';
 
@@ -25,10 +25,10 @@ export default function Reports() {
 function Daily() {
   const toast = useToast();
   const [date, setDate] = useState(todayStr());
-  const [d, setD] = useState(undefined);
+  const [d, setD] = useState(() => cacheGet(`/reports/daily?date=${todayStr()}`) ?? undefined);
   const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
-    setD(undefined);
+    setD((cur) => cacheGet(`/reports/daily?date=${date}`) ?? (date === todayStr() ? cur : undefined));
     swrFetch(`/reports/daily?date=${date}`, { onData: setD, onRefreshing: setRefreshing, ttlMs: 60_000 })
       .catch((e) => { toast(e.message, 'err'); setD(null); });
   }, [date, toast]);

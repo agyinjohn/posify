@@ -22,6 +22,7 @@ const productSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+productSchema.index({ active: 1, name: 1 }); // product list sorted by name
 productSchema.index({ barcode: 1 }, { unique: true, partialFilterExpression: { barcode: { $type: 'string' } } });
 
 export default mongoose.model('Product', productSchema);

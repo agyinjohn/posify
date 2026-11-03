@@ -1,9 +1,9 @@
-import { r2 } from './money.js';
+import { r4 } from './money.js';
 
 // Running-average cost after receiving `qty` more units at `unitCost`.
 // With no stock on hand the new delivery's cost simply becomes the cost.
 export const weightedCost = (stock, cost, qty, unitCost) =>
-  stock > 0 ? r2((stock * cost + qty * unitCost) / (stock + qty)) : r2(unitCost);
+  stock > 0 ? r4((stock * cost + qty * unitCost) / (stock + qty)) : r4(unitCost);
 
 /**
  * Receive stock and update the average cost without racing other stock changes.
