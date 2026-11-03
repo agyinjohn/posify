@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { swrFetch } from '../cache.js';
+import { cacheGet, swrFetch } from '../cache.js';
 import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { dateTime, todayStr } from '../format.js';
 
@@ -26,7 +26,7 @@ export default function AuditLog() {
   const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(todayStr());
   const [action, setAction] = useState('');
-  const [rows, setRows] = useState(null);
+  const [rows, setRows] = useState(() => cacheGet(`/audit?from=${todayStr()}&to=${todayStr()}`));
   const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded] = useState(null);
 

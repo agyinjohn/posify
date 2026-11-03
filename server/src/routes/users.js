@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
-import { requireAuth, requireOwner } from '../middleware/auth.js';
+import { requireAuth, requireOwner, forgetUser } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { assertId, pick } from '../lib/validate.js';
 import { SaleError } from '../lib/pricing.js';
@@ -39,6 +39,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     update.passwordHash = await bcrypt.hash(req.body.password, 12);
   }
   const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+  forgetUser(req.params.id); // role / active changes take effect on the very next request
   if (!user) return res.status(404).json({ error: 'User not found' });
   audit({ req, action: 'user.edit', target: user.username, targetId: user._id, detail: Object.keys(update).filter((k) => k !== 'passwordHash').reduce((o, k) => ({ ...o, [k]: update[k] }), {}) });
   res.json(user);

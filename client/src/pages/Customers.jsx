@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, download } from '../api.js';
-import { cacheInvalidatePrefix, swrFetch } from '../cache.js';
+import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { dateTime, fmt, METHODS, r2, todayStr } from '../format.js';
@@ -8,7 +8,7 @@ import { dateTime, fmt, METHODS, r2, todayStr } from '../format.js';
 export default function Customers() {
   const { isOwner } = useAuth();
   const toast = useToast();
-  const [list, setList] = useState(null);
+  const [list, setList] = useState(() => cacheGet('/customers?q='));
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
   const [owing, setOwing] = useState(false);

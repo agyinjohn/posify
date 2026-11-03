@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import compression from 'compression';
 import { config } from './config.js';
 import { sanitize } from './middleware/sanitize.js';
 import { errorHandler, notFound } from './middleware/error.js';
@@ -30,6 +31,7 @@ export function createApp() {
       directives: { 'img-src': ["'self'", 'data:', 'https://res.cloudinary.com'] },
     },
   }));
+  app.use(compression()); // JSON lists (products, sales) shrink about 5x, which is most of the wait on mobile data
   app.use(cors({ origin: config.clientOrigins }));
   app.use(express.json({ limit: '100kb' }));
   app.use(sanitize);
@@ -52,7 +54,9 @@ export function createApp() {
   // One-deploy setup: serve the built React app from the same server when it exists.
   const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
   if (fs.existsSync(dist)) {
-    app.use(express.static(dist));
+    // Built files have hashed names, so browsers can keep them for a year; index.html must always be re-checked.
+    app.use('/assets', express.static(path.join(dist, 'assets'), { maxAge: '1y', immutable: true }));
+    app.use(express.static(dist, { maxAge: 0, etag: true }));
     app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
   }
 

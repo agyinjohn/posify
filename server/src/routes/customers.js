@@ -23,7 +23,7 @@ router.get('/', asyncHandler(async (req, res) => {
     filter.$or = [{ name: rx }, { phone: rx }];
   }
   if (req.query.owing === '1') filter.balance = { $gt: 0 };
-  res.json(await Customer.find(filter).sort({ name: 1 }).limit(2000));
+  res.json(await Customer.find(filter).sort({ name: 1 }).limit(2000).lean());
 }));
 
 router.post('/', asyncHandler(async (req, res) => {

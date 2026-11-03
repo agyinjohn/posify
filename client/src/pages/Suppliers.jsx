@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { cacheGet, swrFetch } from '../cache.js';
 import { Field, Modal, useToast } from '../ui.jsx';
 import { dateTime, fmt, qtyFmt } from '../format.js';
 
@@ -23,12 +24,12 @@ export default function Suppliers() {
 
 function SupplierList() {
   const toast = useToast();
-  const [list, setList] = useState([]);
+  const [list, setList] = useState(() => cacheGet('/suppliers?q=') ?? []);
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
 
   const load = useCallback(() => {
-    api(`/suppliers?q=${encodeURIComponent(q)}`).then(setList).catch((e) => toast(e.message, 'err'));
+    swrFetch(`/suppliers?q=${encodeURIComponent(q)}`, { onData: setList, ttlMs: 30_000 }).catch((e) => toast(e.message, 'err'));
   }, [q, toast]);
   useEffect(load, [load]);
 
@@ -90,13 +91,13 @@ function SupplierForm({ s, onClose, onSaved }) {
 
 function POList() {
   const toast = useToast();
-  const [pos, setPos] = useState([]);
+  const [pos, setPos] = useState(() => cacheGet('/purchase-orders') ?? []);
   const [status, setStatus] = useState('');
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState(null);
 
   const load = useCallback(() => {
-    api(`/purchase-orders${status ? `?status=${status}` : ''}`).then(setPos).catch((e) => toast(e.message, 'err'));
+    swrFetch(`/purchase-orders${status ? `?status=${status}` : ''}`, { onData: setPos, ttlMs: 30_000 }).catch((e) => toast(e.message, 'err'));
   }, [status, toast]);
   useEffect(load, [load]);
 
@@ -161,16 +162,16 @@ function POList() {
 
 function POForm({ onClose, onSaved }) {
   const toast = useToast();
-  const [suppliers, setSuppliers] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState(() => cacheGet('/suppliers?q=') ?? []);
+  const [products, setProducts] = useState(() => cacheGet('/products?all=1&q=') ?? []);
   const [supplierId, setSupplierId] = useState('');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState([{ productId: '', qty: 1, unitCost: '' }]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api('/suppliers').then(setSuppliers).catch(() => {});
-    api('/products?all=1').then(setProducts).catch(() => {});
+    swrFetch('/suppliers?q=', { onData: setSuppliers }).catch(() => {});
+    swrFetch('/products?all=1&q=', { onData: setProducts, ttlMs: 60_000 }).catch(() => {});
   }, []);
 
   const setLine = (i, patch) => setLines((ls) => ls.map((l, j) => j === i ? { ...l, ...patch } : l));

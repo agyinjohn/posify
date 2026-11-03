@@ -15,6 +15,7 @@ import Suppliers from './pages/Suppliers.jsx';
 import { QueueBadge, QueuePanel } from './pages/OfflineQueue.jsx';
 import { SHOP_NAME } from './format.js';
 import { useOfflineSync } from './offlineSync.js';
+import { startPrefetch, warmRoute } from './prefetch.js';
 import {
   ShoppingCart, Receipt, Users as UsersIcon, Package, BarChart2,
   Clock, UserCog, ClipboardList, Truck, TrendingUp, Menu, X,
@@ -88,6 +89,8 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false); // mobile drawer
   const { pathname } = useLocation();
   useEffect(() => { setNavOpen(false); }, [pathname]);
+  // Load the data every screen needs in the background, so each one opens instantly.
+  useEffect(() => (user ? startPrefetch(isOwner) : undefined), [user, isOwner]);
   useEffect(() => {
     if (!navOpen) return undefined;
     const onKey = (e) => e.key === 'Escape' && setNavOpen(false);
@@ -102,7 +105,9 @@ export default function App() {
   return (
     <div className="shell">
       {navOpen && <div className="side-scrim" onClick={() => setNavOpen(false)} />}
-      <nav className={`side${navOpen ? ' open' : ''}`} aria-label="Main">
+      <nav className={`side${navOpen ? ' open' : ''}`} aria-label="Main"
+        onPointerOver={(e) => { const a = e.target.closest?.('a[href]'); if (a) warmRoute(a.getAttribute('href'), isOwner); }}
+        onTouchStart={(e) => { const a = e.target.closest?.('a[href]'); if (a) warmRoute(a.getAttribute('href'), isOwner); }}>
         <button className="side-close" onClick={() => setNavOpen(false)} aria-label="Close menu"><X size={20} /></button>
         <div className="side-brand">
           <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" className="side-logo">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { swrFetch } from '../cache.js';
+import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import Receipt from '../Receipt.jsx';
@@ -16,7 +16,7 @@ export default function Sales() {
   const toast = useToast();
   const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(todayStr());
-  const [sales, setSales] = useState(null);
+  const [sales, setSales] = useState(() => cacheGet(`/sales?from=${todayStr()}&to=${todayStr()}`)); // warm copy from the background prefetch
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [view, setView] = useState(null);
@@ -46,6 +46,7 @@ export default function Sales() {
     try {
       const r = await api(`/sales/${voiding._id}/void`, { method: 'POST', body: { reason, refundMethod } });
       toast(`${voiding.receiptNo} voided and stock restored${refundNote(r)}`);
+      cacheInvalidatePrefix('/products'); cacheInvalidatePrefix('/sales'); cacheInvalidatePrefix('/customers'); cacheInvalidatePrefix('/reports');
       setVoiding(null); setReason(''); load();
     } catch (e) { toast(e.message, 'err'); }
   };
@@ -194,6 +195,7 @@ function ReturnModal({ sale, onClose, onSaved }) {
     try {
       const r = await api(`/sales/${sale._id}/return`, { method: 'POST', body: { lines, reason, refundMethod } });
       toast(`Return recorded and stock restored${refundNote(r)}`);
+      cacheInvalidatePrefix('/products'); cacheInvalidatePrefix('/sales'); cacheInvalidatePrefix('/customers'); cacheInvalidatePrefix('/reports');
       onSaved();
     } catch (err) { toast(err.message, 'err'); setBusy(false); }
   };

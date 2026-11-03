@@ -1013,3 +1013,9 @@ img, video { max-width: 100%; }
   .modal .sticky-actions { position: sticky; bottom: calc(-1rem - env(safe-area-inset-bottom)); margin: 1rem -1rem calc(-1rem - env(safe-area-inset-bottom)); padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
   .customer-results button { min-height: 3rem; }
 }
+
+/* Bulk price entry */
+.bulk-mode { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; background: var(--paper); border-radius: 8px; padding: .6rem .8rem; margin-bottom: .9rem; }
+.bulk-mode > span { font-weight: 600; font-size: .92rem; }
+.bulk-mode small { flex-basis: 100%; }
+@media (max-width: 640px) { .bulk-mode .seg { width: 100%; } .bulk-mode .seg button { flex: 1; } }

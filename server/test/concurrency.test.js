@@ -89,8 +89,8 @@ test('a sale between read and write forces a recompute with the real stock', asy
   let once = true;
   const p = makeProduct(10, 4, (d) => { if (once) { once = false; d.stock = 2; } }); // 8 sold mid-flight
   await applyReceipt({ read: p.read, cas: p.cas, qty: 10, unitCost: 6 });
-  // average must use the real 2 units on hand, not the stale 10: (2*4 + 10*6) / 12 = 5.67
-  assert.deepEqual(p.doc, { stock: 12, costPrice: 5.67 });
+  // average must use the real 2 units on hand, not the stale 10: (2*4 + 10*6) / 12 = 5.6667
+  assert.deepEqual(p.doc, { stock: 12, costPrice: 5.6667 });
 });
 
 test('gives up without writing if the product keeps changing, null if gone', async () => {

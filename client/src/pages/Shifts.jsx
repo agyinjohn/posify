@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { cacheGet, swrFetch } from '../cache.js';
 import { useToast } from '../ui.jsx';
 import { dateTime, fmt } from '../format.js';
 import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
 
 export default function Shifts() {
   const toast = useToast();
-  const [shifts, setShifts] = useState([]);
+  const [shifts, setShifts] = useState(() => cacheGet('/shifts') ?? []);
   const [current, setCurrent] = useState(undefined); // undefined = loading, null = none open
   const [dialog, setDialog] = useState(null); // 'open' | 'close'
 
   const load = useCallback(() => {
-    api('/shifts').then(setShifts).catch((e) => toast(e.message, 'err'));
+    swrFetch('/shifts', { onData: setShifts, ttlMs: 30_000 }).catch((e) => toast(e.message, 'err'));
     api('/shifts/current').then(setCurrent).catch(() => setCurrent(null));
   }, [toast]);
   useEffect(load, [load]);

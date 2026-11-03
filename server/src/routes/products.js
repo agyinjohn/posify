@@ -31,7 +31,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
     filter.$or = [{ name: rx }, { sku: rx }, { barcode: rx }];
   }
   if (lowStock === '1') filter.$expr = { $lte: ['$stock', '$reorderLevel'] };
-  const query = Product.find(filter).sort({ name: 1 }).limit(5000);
+  const query = Product.find(filter).sort({ name: 1 }).limit(5000).lean(); // plain objects: much cheaper to build and send
   if (req.user.role !== 'owner') query.select('-costPrice'); // cashiers never see cost
   res.json(await query);
 }));

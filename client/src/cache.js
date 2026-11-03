@@ -3,13 +3,56 @@
 
 const mem = new Map(); // key -> { data, exp }
 
+// Off between sign-out and the next sign-in, so a request still in flight when someone logs out
+// cannot write the old user's data back into the cache.
+let enabled = true;
+export const cacheEnable = () => { enabled = true; };
+
 export function cacheSet(key, data, ttlMs = 30_000) {
+  if (!enabled) return;
   const exp = Date.now() + ttlMs;
   mem.set(key, { data, exp });
-  try { sessionStorage.setItem(`pos_cache:${key}`, JSON.stringify({ data, exp })); } catch {}
+  persistLater(key, { data, exp });
+}
+
+// Writing a big list (thousands of products) to sessionStorage freezes the page for a moment, so it is
+// done when the browser is idle. Memory already serves every in-session read; storage only helps after a reload.
+const pending = new Map();
+let scheduled = false;
+function persistLater(key, entry) {
+  pending.set(key, entry);
+  if (scheduled) return;
+  scheduled = true;
+  const run = () => {
+    scheduled = false;
+    for (const [k, v] of pending) {
+      try {
+        const raw = JSON.stringify(v);
+        if (raw.length < 1_000_000) sessionStorage.setItem(`pos_cache:${k}`, raw);
+      } catch {}
+    }
+    pending.clear();
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 3000 });
+  else setTimeout(run, 500);
+}
+
+// Everything cached belongs to whoever is signed in (a cashier's lists have no costs, an owner's do),
+// so it must never outlive the session.
+export function cacheClearAll() {
+  enabled = false;
+  mem.clear();
+  pending.clear();
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k?.startsWith('pos_cache:')) sessionStorage.removeItem(k);
+    }
+  } catch {}
 }
 
 export function cacheGet(key) {
+  if (!enabled) return null;
   let entry = mem.get(key);
   if (!entry) {
     try {
