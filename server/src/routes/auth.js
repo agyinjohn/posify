@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import User from '../models/User.js';
 import { signToken, requireAuth, requireAuthAllowingPasswordChange, forgetUser } from '../middleware/auth.js';
 import { checkPassword } from '../lib/password.js';
+import { generateCodes, findCode, remaining, FailureTracker, CODE_COUNT } from '../lib/recoveryCodes.js';
 import { SaleError } from '../lib/pricing.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { audit } from '../lib/audit.js';
@@ -56,6 +57,66 @@ router.post('/change-password', requireAuthAllowingPasswordChange, changeLimiter
   forgetUser(user._id);
   audit({ req, action: 'password.change', targetId: user._id });
   res.json({ token: signToken(user), user });
+}));
+
+// ── Owner recovery codes ────────────────────────────────────────────────────────────────────────
+// Generated while signed in (needs the current password), shown once, used on the login page's "Forgot password?".
+const ownerOnly = (req, res, next) => (req.user.role === 'owner' ? next() : res.status(403).json({ error: 'Only the owner has recovery codes' }));
+
+router.get('/recovery-codes', requireAuth, ownerOnly, asyncHandler(async (req, res) => {
+  const u = await User.findById(req.user._id).select('+recoveryCodes');
+  res.json({ remaining: remaining(u.recoveryCodes), total: CODE_COUNT, createdAt: u.recoveryCodesCreatedAt });
+}));
+
+router.post('/recovery-codes', requireAuth, ownerOnly, changeLimiter, asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id).select('+passwordHash +recoveryCodes');
+  if (!(await bcrypt.compare(String(req.body?.currentPassword ?? ''), user.passwordHash))) {
+    audit({ req, action: 'recovery.generate.fail' });
+    throw new SaleError('Your current password is wrong');
+  }
+  const { codes, records } = await generateCodes();
+  user.recoveryCodes = records; // replaces any earlier set: the old codes stop working
+  user.recoveryCodesCreatedAt = new Date();
+  await user.save();
+  audit({ req, action: 'recovery.generate', targetId: user._id });
+  res.json({ codes, total: CODE_COUNT, createdAt: user.recoveryCodesCreatedAt });
+}));
+
+// Public "Forgot password?": username + one recovery code + new password. Every failure looks the same
+// (no hint whether the username exists), attempts are throttled per username and per IP, and a code works once.
+const recoverIpLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 15, skipSuccessfulRequests: true, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many attempts. Try again in 15 minutes' } });
+const recoverFailures = new FailureTracker({ limit: 5, windowMs: 15 * 60_000 });
+const RECOVER_FAIL = 'That username and recovery code do not match';
+
+router.post('/recover', recoverIpLimiter, asyncHandler(async (req, res) => {
+  const { username, code, newPassword } = req.body || {};
+  if (typeof username !== 'string' || typeof code !== 'string' || !username.trim() || !code.trim()) {
+    return res.status(400).json({ error: 'Enter your username, a recovery code and a new password' });
+  }
+  const key = username.toLowerCase().trim();
+  if (recoverFailures.isLocked(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes' });
+
+  const user = await User.findOne({ username: key, role: 'owner', active: true }).select('+recoveryCodes');
+  const records = user?.recoveryCodes ?? [];
+  const index = await findCode(records, code);
+  if (!user || index === -1) {
+    recoverFailures.fail(key);
+    audit({ req, action: 'recovery.fail', username: key });
+    return res.status(400).json({ error: RECOVER_FAIL });
+  }
+  checkPassword(newPassword, user.username); // a valid code is not spent on a weak password
+
+  // Spend the code atomically: if two requests race with the same code, only one wins.
+  const spent = await User.findOneAndUpdate(
+    { _id: user._id, [`recoveryCodes.${index}.hash`]: records[index].hash, [`recoveryCodes.${index}.usedAt`]: null },
+    { $set: { [`recoveryCodes.${index}.usedAt`]: new Date(), passwordHash: await bcrypt.hash(newPassword, 12), passwordChangedAt: new Date(), mustChangePassword: false } },
+  );
+  if (!spent) return res.status(400).json({ error: RECOVER_FAIL });
+  recoverFailures.clear(key);
+  forgetUser(user._id);
+  audit({ req, action: 'recovery.reset', username: key, targetId: user._id, detail: { codesLeft: remaining(records) - 1 } });
+  res.json({ ok: true, codesLeft: remaining(records) - 1 });
 }));
 
 export default router;

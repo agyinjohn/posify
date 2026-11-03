@@ -44,7 +44,9 @@ Put it behind HTTPS (Render, Railway, a VPS with Caddy/Nginx). Set `CLIENT_ORIGI
 
 - **Change your own:** profile menu (top right), then *Change password*. Every other device you were signed in on is signed out.
 - **Reset someone else's:** owner opens Users, then *Edit*, and types a temporary password. That person is signed out everywhere and must choose their own at their next sign-in.
-- **Forgot the owner password (nobody can sign in):** only someone who controls the server can recover it.
+- **Owner recovery codes (do this once, today):** profile menu, then *Recovery codes*, enter your password and make a set of 8. Save them somewhere private (password manager, or print the sheet). If you forget your password, click *Forgot your password?* on the sign-in page, enter your username, one code and a new password. Each code works once, and making a new set cancels the old one. The reset signs out every device. A red dot in the profile menu reminds you when none are set up or 2 or fewer are left.
+  - Staff (cashiers) have no codes: the owner resets their password from Users.
+- **Forgot the owner password and have no codes left:** only someone who controls the server can recover it.
   - **Render:**
     1. Dashboard, open the web service, then *Environment*.
     2. Add `RESET_OWNER_PASSWORD` with a temporary password (8+ characters) and save. Render restarts the service.

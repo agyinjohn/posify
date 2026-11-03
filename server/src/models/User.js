@@ -11,6 +11,9 @@ const userSchema = new mongoose.Schema(
     passwordChangedAt: { type: Date, default: null },
     // Set when an owner hands out a temporary password: the user must choose their own before doing anything else.
     mustChangePassword: { type: Boolean, default: false },
+    // One-time recovery codes (owner only): bcrypt hashes, see lib/recoveryCodes.js.
+    recoveryCodes: { type: [{ _id: false, hash: String, usedAt: { type: Date, default: null } }], select: false },
+    recoveryCodesCreatedAt: { type: Date, default: null },
     // Remembers which RESET_OWNER_PASSWORD value was already applied (see lib/ownerReset.js).
     ownerResetFingerprint: { type: String, select: false },
   },
@@ -21,6 +24,7 @@ userSchema.set('toJSON', {
   transform: (_doc, ret) => {
     delete ret.passwordHash;
     delete ret.ownerResetFingerprint;
+    delete ret.recoveryCodes;
     delete ret.__v;
     return ret;
   },

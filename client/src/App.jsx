@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth.jsx';
 import Login from './pages/Login.jsx';
 import ForcePasswordChange, { ChangePasswordModal } from './pages/ChangePassword.jsx';
+import { RecoveryCodesModal, recoveryNeedsAttention, useRecoveryStatus } from './pages/RecoveryCodes.jsx';
 import Sell from './pages/Sell.jsx';
 import Sales from './pages/Sales.jsx';
 import Customers from './pages/Customers.jsx';
@@ -35,7 +36,7 @@ const PAGES = {
   '/audit':     { title: 'Audit Log', sub: 'Track every change made in the system' },
 };
 
-function Topbar({ user, onQueue, logout, onMenu, onChangePassword }) {
+function Topbar({ user, onQueue, logout, onMenu, onChangePassword, onRecovery, recoveryAlert }) {
   const { pathname } = useLocation();
   const { online } = useOfflineSync();
   const { isOwner } = useAuth();
@@ -73,6 +74,11 @@ function Topbar({ user, onQueue, logout, onMenu, onChangePassword }) {
                 </div>
                 <hr className="topbar-dropdown-divider" />
                 <button className="topbar-dropdown-item" onClick={() => { setOpen(false); onChangePassword(); }}>Change password</button>
+                {isOwner && (
+                  <button className="topbar-dropdown-item" onClick={() => { setOpen(false); onRecovery(); }}>
+                    Recovery codes{recoveryAlert && <span className="dot-alert" title="Set up or top up your recovery codes" />}
+                  </button>
+                )}
                 <button className="topbar-dropdown-signout" onClick={() => { setOpen(false); logout(); }}>
                   Sign out
                 </button>
@@ -90,6 +96,8 @@ export default function App() {
   const [showQueue, setShowQueue] = useState(false);
   const [navOpen, setNavOpen] = useState(false); // mobile drawer
   const [showPassword, setShowPassword] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recovery, refreshRecovery] = useRecoveryStatus(Boolean(user) && user.role === 'owner' && !user.mustChangePassword);
   const { pathname } = useLocation();
   useEffect(() => { setNavOpen(false); }, [pathname]);
   // Load the data every screen needs in the background, so each one opens instantly.
@@ -160,7 +168,7 @@ export default function App() {
       </nav>
 
       <div className="shell-body">
-        <Topbar user={user} onQueue={() => setShowQueue(true)} logout={logout} onMenu={() => setNavOpen(true)} onChangePassword={() => setShowPassword(true)} />
+        <Topbar user={user} onQueue={() => setShowQueue(true)} logout={logout} onMenu={() => setNavOpen(true)} onChangePassword={() => setShowPassword(true)} onRecovery={() => setShowRecovery(true)} recoveryAlert={recoveryNeedsAttention(recovery)} />
         <main>
           <Routes>
             <Route path="/" element={<Sell />} />
@@ -179,6 +187,7 @@ export default function App() {
       </div>
       {showQueue && <QueuePanel onClose={() => setShowQueue(false)} />}
       {showPassword && <ChangePasswordModal onClose={() => setShowPassword(false)} />}
+      {showRecovery && <RecoveryCodesModal status={recovery} onChanged={refreshRecovery} onClose={() => { setShowRecovery(false); refreshRecovery(); }} />}
     </div>
   );
 }

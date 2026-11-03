@@ -51,7 +51,7 @@ Update the boxes as you test and deliver.
 - [x] MongoDB operator injection in body and query is blocked
 - [~] Two roles: Owner (everything) and Cashier (sell, own sales, customers)
 - [~] Owner can add users, change roles, reset passwords, disable accounts
-- [~] Passwords: change your own; an owner's reset gives a temporary password the user must replace; a change signs out other sessions; locked-out owner recovery via `RESET_OWNER_PASSWORD` or `npm run reset-owner`
+- [~] Passwords: change your own; an owner's reset gives a temporary password the user must replace; a change signs out other sessions; owner self-service reset from the sign-in page with one-time recovery codes; last-resort recovery via `RESET_OWNER_PASSWORD` or `npm run reset-owner`
 - [x] CSV exports neutralise spreadsheet formula injection
 - [~] Shift open/close cash-up (opening float, closing cash count, variance, per-method summary)
 - [~] General audit log (stock movements, void records, login events, price edits, user changes)

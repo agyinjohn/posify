@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../auth.jsx';
 import { SHOP_NAME } from '../format.js';
+import ForgotPassword from './ForgotPassword.jsx';
 
 function EyeIcon({ open }) {
   return open
@@ -15,6 +16,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
+  const [view, setView] = useState('login'); // 'login' | 'forgot'
 
   const submit = async (e) => {
     e.preventDefault();
@@ -84,6 +86,8 @@ export default function Login() {
       </div>
 
       <div className="login-panel">
+       <div className="login-stack">
+        {view === 'forgot' ? <ForgotPassword onBack={() => setView('login')} defaultUsername={username} /> : (<>
         <form onSubmit={submit} className="login-card">
           <div className="login-card-header">
             <h2>Welcome back</h2>
@@ -109,7 +113,12 @@ export default function Login() {
             {busy ? 'Signing in…' : 'Sign in →'}
           </button>
         </form>
-        <p className="login-forgot">Forgot your password? Ask the owner to reset it for you.</p>
+        <p className="login-forgot">
+          <button type="button" className="login-link" onClick={() => setView('forgot')}>Forgot your password?</button>
+          <span>Owners can use a recovery code. Staff: ask the owner to reset it.</span>
+        </p>
+        </>)}
+       </div>
       </div>
     </div>
   );
