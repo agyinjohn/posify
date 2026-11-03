@@ -1025,3 +1025,13 @@ img, video { max-width: 100%; }
 .bulk-mode > span { font-weight: 600; font-size: .92rem; }
 .bulk-mode small { flex-basis: 100%; }
 @media (max-width: 640px) { .bulk-mode .seg { width: 100%; } .bulk-mode .seg button { flex: 1; } }
+
+/* Password change */
+.login-forgot { margin: 1rem 0 0; text-align: center; font-size: .85rem; color: #8A9BAD; }
+.topbar-dropdown-item { display: block; width: 100%; text-align: left; padding: .7rem 1rem; font-size: .88rem; background: none; border: none; border-radius: 0; min-height: 0; font-weight: 600; }
+.topbar-dropdown-item:hover { background: var(--paper); }
+.force-pw { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 1rem; background: var(--ink); }
+.force-pw-card { width: min(440px, 100%); background: var(--surface); border-radius: 14px; padding: 1.5rem; }
+.force-pw-card h1 { color: var(--indigo); margin: 0 0 .2rem; font-size: 1.3rem; }
+.force-pw-card h2 { margin: 0 0 .6rem; font-size: 1.05rem; }
+.force-pw-card > .ghost { display: block; margin: .8rem auto 0; }

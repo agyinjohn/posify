@@ -109,6 +109,7 @@ export default function Login() {
             {busy ? 'Signing in…' : 'Sign in →'}
           </button>
         </form>
+        <p className="login-forgot">Forgot your password? Ask the owner to reset it for you.</p>
       </div>
     </div>
   );

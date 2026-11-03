@@ -94,7 +94,7 @@ function UserForm({ u, self, onClose, onSaved }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = async (e) => {
     e.preventDefault();
-    const body = isNew ? f : { name: f.name, role: f.role, ...(f.password ? { password: f.password } : {}) };
+    const body = isNew ? f : { name: f.name, role: f.role, ...(f.password && !self ? { password: f.password } : {}) };
     try { await api(isNew ? '/users' : `/users/${u._id}`, { method: isNew ? 'POST' : 'PATCH', body }); toast('User saved'); onSaved(); }
     catch (err) { toast(err.message, 'err'); }
   };
@@ -111,7 +111,13 @@ function UserForm({ u, self, onClose, onSaved }) {
             <option value="owner">Owner</option>
           </select>
         </Field>
-        <Field label={isNew ? 'Password' : 'New password (leave blank to keep)'} hint="At least 8 characters">
+        {self ? (
+          <p className="hint">To change your own password, use <strong>Change password</strong> in your profile menu (top right).</p>
+        ) : (
+        <Field
+          label={isNew ? 'Temporary password' : 'New temporary password (leave blank to keep)'}
+          hint="At least 8 characters. They will be asked to choose their own at their next sign-in, and any device they are signed in on is signed out."
+        >
           <div className="pw-wrap">
             <input type={showPw ? 'text' : 'password'} value={f.password} onChange={set('password')} required={isNew} minLength={8} autoComplete="new-password" />
             <button type="button" className="pw-eye" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? 'Hide password' : 'Show password'}>
@@ -119,6 +125,7 @@ function UserForm({ u, self, onClose, onSaved }) {
             </button>
           </div>
         </Field>
+        )}
         <div className="actions"><button className="primary">Save user</button></div>
       </form>
     </Modal>
