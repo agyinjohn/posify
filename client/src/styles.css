@@ -1113,3 +1113,18 @@ img, video { max-width: 100%; }
 /* the tile's generic "span" label style must not apply inside the change note */
 .report-kpi .kpi-delta span { display: inline; margin: 0; font-size: inherit; color: inherit; }
 .report-kpi .kpi-delta span.sr-only { position: absolute; }
+
+/* ── Platform admin ── */
+.admin { min-height: 100vh; }
+.admin-top { display: flex; align-items: center; gap: .75rem; padding: .7rem 1.25rem; background: var(--ink); color: #E9EDF1; flex-wrap: wrap; }
+.admin-top strong { color: var(--gold); font-size: 1.05rem; margin-right: auto; }
+.admin-top .admin-who { color: #8A9BAD; font-size: .88rem; }
+.admin-top .ghost { color: #C9D2DB; }
+.admin .page { margin: 0 auto; padding: 1.25rem; }
+.admin-cred { display: grid; gap: .3rem; font-size: .88rem; }
+.admin-cred > div { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.admin-cred span { color: var(--muted); font-size: .8rem; min-width: 8.5rem; }
+.admin-cred code { font-family: ui-monospace, Menlo, monospace; font-weight: 700; background: var(--paper); padding: .15rem .45rem; border-radius: 6px; user-select: all; }
+.admin-cred small { color: var(--muted); }
+.ghost-btn { min-height: 0; padding: .2rem .55rem; font-size: .8rem; }
+@media (max-width: 640px) { .admin .page { padding: .8rem; } .admin-cred span { min-width: 0; } }

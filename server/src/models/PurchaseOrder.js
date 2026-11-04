@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 const lineSchema = new mongoose.Schema(
   {
@@ -30,7 +31,9 @@ const schema = new mongoose.Schema(
   { timestamps: true },
 );
 
-schema.index({ status: 1, createdAt: -1 });
-schema.index({ supplier: 1, createdAt: -1 });
+schema.index({ shop: 1, status: 1, createdAt: -1 });
+schema.index({ shop: 1, supplier: 1, createdAt: -1 });
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('PurchaseOrder', schema);

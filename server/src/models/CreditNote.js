@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 // Credit cancelled on a customer's account because goods were returned (or a sale voided).
 // Written with the balance change so customer statements can show when it happened.
@@ -12,5 +13,7 @@ const schema = new mongoose.Schema(
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('CreditNote', schema);

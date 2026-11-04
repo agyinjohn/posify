@@ -5,7 +5,11 @@ export const dateTime = (d) => new Date(d).toLocaleString('en-GB', { dateStyle: 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 export const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 export const METHODS = ['Cash', 'MoMo', 'Card', 'Transfer'];
-export const SHOP_NAME = import.meta.env.VITE_SHOP_NAME || 'Posify';
+// The signed-in shop's name (from the server) on receipts and in the sidebar. A live binding: importers see the
+// new value once auth.jsx sets it after sign-in.
+const DEFAULT_SHOP_NAME = import.meta.env.VITE_SHOP_NAME || 'Posify';
+export let SHOP_NAME = DEFAULT_SHOP_NAME;
+export const setShopName = (name) => { SHOP_NAME = name || DEFAULT_SHOP_NAME; };
 
 // Unique id for idempotency keys. crypto.randomUUID only exists on HTTPS/localhost, and shops often
 // run the till over plain http on the local network, so fall back to getRandomValues.

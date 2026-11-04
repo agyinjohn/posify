@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 const userSchema = new mongoose.Schema(
   {
@@ -29,5 +30,7 @@ userSchema.set('toJSON', {
     return ret;
   },
 });
+
+userSchema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('User', userSchema);

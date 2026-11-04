@@ -11,7 +11,8 @@ import { pickOwner, resetFingerprint } from './ownerReset.js';
  * With skipIfApplied, the same value is applied only once (safe to leave the env var set across restarts).
  */
 export async function applyOwnerReset({ password, username, secret, skipIfApplied = true }) {
-  const owners = await User.find({ role: 'owner' }).select('+ownerResetFingerprint');
+  // Across all shops: with more than one owner, RESET_OWNER_USERNAME says which (usernames are unique platform-wide).
+  const owners = await User.find({ role: 'owner' }).select('+ownerResetFingerprint').setOptions({ skipTenant: true });
   const target = pickOwner(owners, username);
   checkPassword(password, target.username);
 
@@ -25,6 +26,6 @@ export async function applyOwnerReset({ password, username, secret, skipIfApplie
   target.ownerResetFingerprint = fingerprint;
   await target.save();
   forgetUser(target._id);
-  await AuditLog.create({ action: 'owner.reset', username: target.username, target: target.username, targetId: target._id, detail: { via: 'server recovery' } });
+  await AuditLog.create({ shop: target.shop, action: 'owner.reset', username: target.username, target: target.username, targetId: target._id, detail: { via: 'server recovery' } });
   return { status: 'reset', username: target.username };
 }

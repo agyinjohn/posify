@@ -20,6 +20,7 @@ import auditRoutes from './routes/audit.js';
 import shiftRoutes from './routes/shifts.js';
 import supplierRoutes from './routes/suppliers.js';
 import purchaseOrderRoutes from './routes/purchase-orders.js';
+import adminRoutes from './routes/admin.js';
 
 export function createApp() {
   const app = express();
@@ -51,6 +52,7 @@ export function createApp() {
   app.use('/api/shifts', shiftRoutes);
   app.use('/api/suppliers', supplierRoutes);
   app.use('/api/purchase-orders', purchaseOrderRoutes);
+  app.use('/api/admin', adminRoutes);
   app.use('/api', notFound);
 
   // One-deploy setup: serve the built React app from the same server when it exists.

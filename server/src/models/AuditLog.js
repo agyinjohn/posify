@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 const schema = new mongoose.Schema(
   {
@@ -14,8 +15,10 @@ const schema = new mongoose.Schema(
   { timestamps: true },
 );
 
-schema.index({ createdAt: -1 });
-schema.index({ user: 1, createdAt: -1 });
-schema.index({ action: 1, createdAt: -1 });
+schema.index({ shop: 1, createdAt: -1 });
+schema.index({ shop: 1, user: 1, createdAt: -1 });
+schema.index({ shop: 1, action: 1, createdAt: -1 });
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('AuditLog', schema);

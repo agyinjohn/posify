@@ -2,7 +2,8 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import User from '../models/User.js';
-import { signToken, requireAuth, requireAuthAllowingPasswordChange, forgetUser } from '../middleware/auth.js';
+import Shop from '../models/Shop.js';
+import { signToken, requireAuth, requireAuthAllowingPasswordChange, forgetUser, forgetShop, loadShop } from '../middleware/auth.js';
 import { checkPassword } from '../lib/password.js';
 import { generateCodes, findCode, remaining, FailureTracker, CODE_COUNT } from '../lib/recoveryCodes.js';
 import { SaleError } from '../lib/pricing.js';
@@ -21,17 +22,27 @@ router.post('/login', limiter, asyncHandler(async (req, res) => {
   if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
     return res.status(400).json({ error: 'Enter your username and password' });
   }
-  const user = await User.findOne({ username: username.toLowerCase().trim() }).select('+passwordHash');
+  // Usernames are unique across all shops, so the account itself says which shop this is.
+  const user = await User.findOne({ username: username.toLowerCase().trim() }).select('+passwordHash').setOptions({ skipTenant: true });
   const ok = await bcrypt.compare(password, user ? user.passwordHash : DUMMY_HASH);
-  if (!user || !user.active || !ok) {
-    audit({ req, action: 'login.fail', username: username.toLowerCase().trim() });
+  if (!user || !user.active || !ok || !user.shop) {
+    audit({ req, action: 'login.fail', username: username.toLowerCase().trim(), shop: user?.shop });
     return res.status(401).json({ error: 'Wrong username or password' });
   }
-  audit({ req, action: 'login.success', username: user.username, targetId: user._id });
-  res.json({ token: signToken(user), user });
+  const shop = await loadShop(user.shop);
+  if (!shop || !shop.active) return res.status(403).json({ error: 'This shop is suspended. Contact your provider', code: 'SHOP_SUSPENDED' });
+  audit({ req, action: 'login.success', username: user.username, targetId: user._id, shop: user.shop });
+  res.json({ token: signToken(user), user, shop: { id: shop._id, name: shop.name } });
 }));
 
-router.get('/me', requireAuthAllowingPasswordChange, (req, res) => res.json({ user: req.user }));
+router.get('/me', requireAuthAllowingPasswordChange, (req, res) => res.json({ user: req.user, shop: { id: req.shop._id, name: req.shop.name } }));
+
+// The owner has chosen their own password: the temporary one the platform admin could see is deleted for good.
+async function retireTempPassword(user) {
+  if (user.role !== 'owner') return;
+  const r = await Shop.updateOne({ _id: user.shop, owner: user._id, tempPassword: { $ne: null } }, { $set: { tempPassword: null, ownerPasswordChangedAt: new Date() } });
+  if (r.modifiedCount) forgetShop(user.shop);
+}
 
 // Change your own password (also the way out of a temporary one). Everyone else's sessions on this account end,
 // this one continues with the fresh token returned here.
@@ -55,6 +66,7 @@ router.post('/change-password', requireAuthAllowingPasswordChange, changeLimiter
   user.mustChangePassword = false;
   await user.save();
   forgetUser(user._id);
+  await retireTempPassword(user);
   audit({ req, action: 'password.change', targetId: user._id });
   res.json({ token: signToken(user), user });
 }));
@@ -97,12 +109,12 @@ router.post('/recover', recoverIpLimiter, asyncHandler(async (req, res) => {
   const key = username.toLowerCase().trim();
   if (recoverFailures.isLocked(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes' });
 
-  const user = await User.findOne({ username: key, role: 'owner', active: true }).select('+recoveryCodes');
+  const user = await User.findOne({ username: key, role: 'owner', active: true }).select('+recoveryCodes').setOptions({ skipTenant: true });
   const records = user?.recoveryCodes ?? [];
   const index = await findCode(records, code);
   if (!user || index === -1) {
     recoverFailures.fail(key);
-    audit({ req, action: 'recovery.fail', username: key });
+    audit({ req, action: 'recovery.fail', username: key, shop: user?.shop });
     return res.status(400).json({ error: RECOVER_FAIL });
   }
   checkPassword(newPassword, user.username); // a valid code is not spent on a weak password
@@ -111,11 +123,12 @@ router.post('/recover', recoverIpLimiter, asyncHandler(async (req, res) => {
   const spent = await User.findOneAndUpdate(
     { _id: user._id, [`recoveryCodes.${index}.hash`]: records[index].hash, [`recoveryCodes.${index}.usedAt`]: null },
     { $set: { [`recoveryCodes.${index}.usedAt`]: new Date(), passwordHash: await bcrypt.hash(newPassword, 12), passwordChangedAt: new Date(), mustChangePassword: false } },
-  );
+  ).setOptions({ skipTenant: true }); // no one is signed in here: the account found above names the shop
   if (!spent) return res.status(400).json({ error: RECOVER_FAIL });
+  await retireTempPassword(user);
   recoverFailures.clear(key);
   forgetUser(user._id);
-  audit({ req, action: 'recovery.reset', username: key, targetId: user._id, detail: { codesLeft: remaining(records) - 1 } });
+  audit({ req, action: 'recovery.reset', username: key, targetId: user._id, detail: { codesLeft: remaining(records) - 1 }, shop: user.shop });
   res.json({ ok: true, codesLeft: remaining(records) - 1 });
 }));
 

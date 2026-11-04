@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 import { PAYMENT_METHODS } from '../lib/money.js';
 
 const itemSchema = new mongoose.Schema(
@@ -24,7 +25,7 @@ const itemSchema = new mongoose.Schema(
 
 const schema = new mongoose.Schema(
   {
-    receiptNo: { type: String, unique: true, required: true },
+    receiptNo: { type: String, required: true }, // unique within a shop (index below)
     clientId: { type: String, maxlength: 64 }, // idempotency key from the till, see POST /sales
     mode: { type: String, enum: ['retail', 'wholesale'], required: true },
     items: [itemSchema],
@@ -55,10 +56,13 @@ const schema = new mongoose.Schema(
   { timestamps: true },
 );
 
-schema.index({ createdAt: -1 });
-schema.index({ clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
-schema.index({ cashier: 1, createdAt: -1 });
-schema.index({ customer: 1, createdAt: -1 }); // customer history and statements
-schema.index({ status: 1, createdAt: -1 });
+schema.index({ shop: 1, receiptNo: 1 }, { unique: true });
+schema.index({ shop: 1, createdAt: -1 });
+schema.index({ shop: 1, clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
+schema.index({ shop: 1, cashier: 1, createdAt: -1 });
+schema.index({ shop: 1, customer: 1, createdAt: -1 }); // customer history and statements
+schema.index({ shop: 1, status: 1, createdAt: -1 });
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('Sale', schema);

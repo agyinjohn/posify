@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 // Every stock change is a row here. product.stock is the running total.
 const schema = new mongoose.Schema(
@@ -14,6 +15,8 @@ const schema = new mongoose.Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-schema.index({ createdAt: -1 });
+schema.index({ shop: 1, createdAt: -1 });
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('StockMovement', schema);

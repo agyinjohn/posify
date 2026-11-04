@@ -1,9 +1,10 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
-    sku: { type: String, required: true, unique: true, trim: true, maxlength: 60 },
+    sku: { type: String, required: true, trim: true, maxlength: 60 }, // unique within a shop (index below)
     barcode: { type: String, trim: true, maxlength: 60 },
     category: { type: String, trim: true, maxlength: 60, default: 'General' },
     costPrice: { type: Number, required: true, min: 0, default: 0 },
@@ -25,7 +26,10 @@ const productSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-productSchema.index({ active: 1, name: 1 }); // product list sorted by name
-productSchema.index({ barcode: 1 }, { unique: true, partialFilterExpression: { barcode: { $type: 'string' } } });
+productSchema.index({ shop: 1, sku: 1 }, { unique: true });
+productSchema.index({ shop: 1, active: 1, name: 1 }); // product list sorted by name
+productSchema.index({ shop: 1, barcode: 1 }, { unique: true, partialFilterExpression: { barcode: { $type: 'string' } } });
+
+productSchema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('Product', productSchema);
