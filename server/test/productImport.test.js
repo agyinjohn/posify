@@ -25,11 +25,24 @@ test('numbers: currency, thousands separators and comma decimals', () => {
   assert.ok(Number.isNaN(parseNumber('abc')));
 });
 
-test('a carton-only product: piece prices are worked out from the carton prices', () => {
-  const r = row(mk({ 'Product Name': 'Frytol Oil', SKU: 'OIL', 'Pieces per carton': 12, 'Pack name': 'ctn', 'Cost per carton': 96, 'Carton price': 120, 'Wholesale per carton': 108, 'Stock cartons': 5 }));
+test('a carton-only product: the piece price is worked out from the carton price', () => {
+  const r = row(mk({ 'Product Name': 'Frytol Oil', SKU: 'OIL', 'Pieces per carton': 12, 'Pack name': 'ctn', 'Cost per carton': 96, 'Carton price': 120, 'Stock cartons': 5 }));
   assert.deepEqual(r.errors, []);
   const d = r.data;
-  assert.deepEqual([d.unitsPerPack, d.costPrice, d.retailPrice, d.wholesalePrice, d.packRetailPrice, d.packWholesalePrice, d.stock], [12, 8, 10, 9, 120, 108, 60]);
+  assert.deepEqual([d.unitsPerPack, d.costPrice, d.retailPrice, d.packRetailPrice, d.wholesalePrice, d.packWholesalePrice, d.stock], [12, 8, 10, 120, 0, 0, 60]);
+});
+
+test('"wholesale" columns from older sheets become the pack price', () => {
+  const both = row(mk({ 'Product Name': 'Oil', SKU: 'O', 'Pieces per carton': 12, Price: 12, 'Carton price': 120, 'Wholesale per carton': 108 }));
+  assert.equal(both.data.packRetailPrice, 108);          // a full carton sells at the wholesale price
+  assert.equal(both.data.retailPrice, 12);               // single pieces keep the piece price
+  assert.ok(both.warnings.some((w) => /Two pack prices/.test(w)));
+  const perPiece = row(mk({ 'Product Name': 'Oil', SKU: 'O', 'Pieces per carton': 12, Price: 12, Wholesale: 9 }));
+  assert.equal(perPiece.data.packRetailPrice, 108);      // wholesale 9 per piece x 12
+  assert.ok(perPiece.warnings.some((w) => /used as the pack price/.test(w)));
+  const noPack = row(mk({ 'Product Name': 'Salt', SKU: 'S', Price: 3, Wholesale: 2 }));
+  assert.equal(noPack.data.packRetailPrice, 0);
+  assert.ok(noPack.warnings.some((w) => /Wholesale price ignored/.test(w)));
 });
 
 test('a carton price is kept as its own price next to a piece price', () => {

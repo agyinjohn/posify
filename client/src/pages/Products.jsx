@@ -4,9 +4,9 @@ import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { CardSkeleton, Field, Modal, RefreshIndicator, useToast } from '../ui.jsx';
 import { fmt, qtyFmt } from '../format.js';
 import ProductImportModal from './ProductImport.jsx';
-import { packName, packPriceFor, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
+import { packName, packPriceFor, packSpecificPrice, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
 
-const blank = { name: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', wholesalePrice: '', packRetailPrice: '', packWholesalePrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
+const blank = { name: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', packRetailPrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
 
 export default function Products() {
   const toast = useToast();
@@ -55,13 +55,12 @@ export default function Products() {
               <div className="product-card-prices">
                 {unitsOf(p) > 1 ? (
                   <>
-                    <span className="product-card-price">{fmt(packPriceFor(p, 'retail'))}<small> per {packName(p)}</small></span>
-                    <span className="product-card-ws">{fmt(p.retailPrice)} each{p.wholesalePrice > 0 || p.packWholesalePrice > 0 ? ` · WS ${fmt(packPriceFor(p, 'wholesale'))}` : ''}</span>
+                    <span className="product-card-price">{fmt(packPriceFor(p))}<small> per {packName(p)}</small></span>
+                    <span className="product-card-ws">{fmt(p.retailPrice)} per piece</span>
                   </>
                 ) : (
                   <>
                     <span className="product-card-price">{fmt(p.retailPrice)}</span>
-                    {p.wholesalePrice > 0 && <span className="product-card-ws">WS {fmt(p.wholesalePrice)}</span>}
                   </>
                 )}
               </div>
@@ -100,10 +99,10 @@ function ProductForm({ p, onClose, onSaved }) {
   const [f, setF] = useState(() => ({
     ...blank, ...p, barcode: p.barcode || '',
     costPrice: p.costPrice ?? '', retailPrice: p.retailPrice ?? '',
-    wholesalePrice: p.wholesalePrice > 0 ? p.wholesalePrice : '',
     costPack: '',
-    packRetailPrice: p.packRetailPrice > 0 ? p.packRetailPrice : '',
-    packWholesalePrice: p.packWholesalePrice > 0 ? p.packWholesalePrice : '',
+    // The one pack price. For products saved before, this shows their old wholesale carton price, which is what a
+    // carton sells at today; saving stores it as the pack price.
+    packRetailPrice: p._id && packSpecificPrice(p) !== null ? packSpecificPrice(p) : '',
   }));
   const [stockUnit, setStockUnit] = useState('pack'); // opening stock typed in packs or pieces
   const [busy, setBusy] = useState(false);
@@ -122,8 +121,6 @@ function ProductForm({ p, onClose, onSaved }) {
     costPack: num(f.costPack) !== null ? null : whole(f.costPrice),
     retail: num(f.retailPrice) !== null ? null : piece(f.packRetailPrice),
     retailPack: num(f.packRetailPrice) !== null ? null : whole(f.retailPrice),
-    ws: num(f.wholesalePrice) !== null ? null : piece(f.packWholesalePrice),
-    wsPack: num(f.packWholesalePrice) !== null ? null : whole(f.wholesalePrice),
   };
   const ph = (n, word) => (n === null ? '' : `${n}  (${word})`);
 
@@ -142,12 +139,13 @@ function ProductForm({ p, onClose, onSaved }) {
     if (retailPiece === null) return toast('Enter a selling price (per piece or per pack)', 'err');
     if (costPiece === null) return toast('Enter a cost (per piece or per pack)', 'err');
     setBusy(true);
-    const wsPiece = num(f.wholesalePrice) ?? piece(f.packWholesalePrice);
     const body = {
       name: f.name, sku: f.sku, barcode: f.barcode, category: f.category,
-      costPrice: costPiece, retailPrice: retailPiece, wholesalePrice: wsPiece ?? 0,
+      costPrice: costPiece, retailPrice: retailPiece,
       packRetailPrice: packed ? num(f.packRetailPrice) ?? 0 : 0,
-      packWholesalePrice: packed ? num(f.packWholesalePrice) ?? 0 : 0,
+      // Retired: the pack price is the wholesale price. Clearing these stops older products' wholesale fields
+      // from overriding the price typed here.
+      wholesalePrice: 0, packWholesalePrice: 0,
       reorderLevel: Number(f.reorderLevel) || 0, unitsPerPack: units, packLabel: f.packLabel.trim(),
     };
     if (isNew) body.stock = packed && stockUnit === 'pack' ? toPieces(f.stock || 0, units) : Number(f.stock) || 0;
@@ -192,9 +190,9 @@ function ProductForm({ p, onClose, onSaved }) {
 
         {packed && (
           <p className="span2 hint bulk-explain">
-            Enter the price per piece, per {pack}, or both. If you leave one empty it is worked out from the other
-            ({pack} ÷ {units} for a piece, piece × {units} for a {pack}). A price you type for the {pack} is kept as its own
-            price, so a {pack} can sell for less than {units} single pieces.
+            A customer buying single pieces pays the <strong>piece price</strong> (retail); a customer buying a full {pack} pays
+            the <strong>{pack} price</strong> (wholesale). Enter either or both: an empty one is worked out from the other
+            ({pack} ÷ {units} for a piece, piece × {units} for a {pack}).
           </p>
         )}
 
@@ -207,21 +205,12 @@ function ProductForm({ p, onClose, onSaved }) {
           </Field>
         )}
 
-        <Field label="Retail price per piece (GH₵)" hint={mPiece !== null ? `margin ${mPiece}%` : undefined}>
+        <Field label={packed ? 'Selling price per piece (GH₵)' : 'Selling price (GH₵)'} hint={[packed ? 'Retail: what a customer pays for one piece' : null, mPiece !== null ? `margin ${mPiece}%` : null].filter(Boolean).join(' · ') || undefined}>
           {priceInput('retailPrice', ph(auto.retail, `${f.packRetailPrice} ÷ ${units}`), !packed || num(f.packRetailPrice) === null)}
         </Field>
         {packed && (
-          <Field label={`Retail price per ${pack} (GH₵)`} hint={[auto.retailPack !== null ? `sells at ${money(auto.retailPack)} unless you set a ${pack} price` : null, mPack !== null ? `margin ${mPack}%` : null].filter(Boolean).join(' · ') || undefined}>
+          <Field label={`Selling price per ${pack} (GH₵)`} hint={[`Wholesale: what a customer pays for a full ${pack}`, auto.retailPack !== null ? `${money(auto.retailPack)} unless you set it` : null, mPack !== null ? `margin ${mPack}%` : null].filter(Boolean).join(' · ')}>
             {priceInput('packRetailPrice', ph(auto.retailPack, `${f.retailPrice} × ${units}`), false)}
-          </Field>
-        )}
-
-        <Field label="Wholesale price per piece (GH₵)" hint="Leave empty to use the retail price">
-          {priceInput('wholesalePrice', ph(auto.ws, `${f.packWholesalePrice} ÷ ${units}`), false)}
-        </Field>
-        {packed && (
-          <Field label={`Wholesale price per ${pack} (GH₵)`} hint="Leave empty to use the wholesale piece price × pieces, or else the retail price">
-            {priceInput('packWholesalePrice', ph(auto.wsPack, `${f.wholesalePrice} × ${units}`), false)}
           </Field>
         )}
 

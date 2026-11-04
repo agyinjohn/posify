@@ -44,7 +44,7 @@ Put it behind HTTPS (Render, Railway, a VPS with Caddy/Nginx). Set `CLIENT_ORIGI
 
 Products page, then **Import**. Download the template, fill it in (one product per row), save it as **CSV** and choose it.
 - Column titles are matched loosely: `Cost per carton`, `cost_per_ctn` and `Carton cost` all work. Unknown columns are listed and ignored.
-- Prices follow the product form: give per-piece and/or per-carton prices; an empty one is worked out from the other (needs `pieces per pack`).
+- Prices follow the product form: a price per piece (retail) and/or per pack (wholesale); an empty one is worked out from the other (needs `pieces per pack`). Older "wholesale" columns are read as the pack price.
 - Nothing is saved until you press Import: first every row is checked and you see what will be added, updated, skipped or needs fixing.
 - Same SKU already in the shop: skip it, or update its details and prices (stock is never changed by an update). No SKU: one is made from the barcode or the name.
 - Opening stock (in pieces or in packs) is recorded as an opening stock movement. Up to 2000 rows per file.

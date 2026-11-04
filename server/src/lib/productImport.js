@@ -3,8 +3,8 @@ import { r6 } from './money.js';
 /**
  * Bulk product import: spreadsheet rows -> validated product records. Pure (no DB) so it can be tested.
  * Column titles are matched loosely ("Cost per carton", "cost_per_ctn" and "CARTON COST" are all the same column),
- * and prices follow the same rules as the product form: per-piece and per-pack prices may both be given, and
- * whichever is empty is worked out from the other.
+ * and prices follow the same rules as the product form: single pieces sell at the piece price, a full pack at the
+ * pack price; whichever is empty is worked out from the other.
  */
 
 const ALIASES = {
@@ -101,14 +101,18 @@ export function normalizeRow(cells, map) {
     else warnings.push('Pack prices ignored: "Pieces per pack" is empty or 1');
   }
 
-  // Same rules as the product form: the piece price wins when given, else pack / pieces.
+  // One price per piece (single pieces, retail) and one per pack (a full pack, wholesale). "Wholesale" columns from
+  // older sheets are read as the pack price. An empty piece price is worked out from the pack price, as in the form.
+  let packPrice = packed ? (wsPack ?? retailPack) : null;
+  if (packed && wsPack !== null && retailPack !== null && Math.abs(wsPack - retailPack) > 0.005) warnings.push(`Two pack prices given (${retailPack} and wholesale ${wsPack}): a full pack sells at the wholesale price ${wsPack}`);
+  if (packed && packPrice === null && wsPiece !== null) { packPrice = wsPiece * units; warnings.push(`Wholesale price per piece × ${units} = ${r6(packPrice)} is used as the pack price`); }
+  if (!packed && (wsPiece !== null || wsPack !== null) && !anyPack) warnings.push('Wholesale price ignored: a product with no pack size has one price');
   const cost = costPiece ?? (packed && costPack !== null ? costPack / units : null);
-  const retail = retailPiece ?? (packed && retailPack !== null ? retailPack / units : null);
-  const wholesale = wsPiece ?? (packed && wsPack !== null ? wsPack / units : 0);
+  const retail = retailPiece ?? (packed && packPrice !== null ? packPrice / units : null);
   if (retail === null || retail <= 0) { if (!errors.some((e) => e.startsWith('Retail'))) errors.push('Selling price is missing or zero (per piece, or per pack together with "Pieces per pack")'); }
   if (cost === null) warnings.push('No cost given: cost is saved as 0, so profit will look like the full price');
   if (cost !== null && retail > 0 && cost > retail) warnings.push('Cost is higher than the selling price');
-  if (wholesale > 0 && retail > 0 && wholesale > retail) warnings.push('Wholesale price is higher than the retail price');
+  if (packed && packPrice !== null && retail > 0 && packPrice > retail * units + 0.005) warnings.push('A full pack costs more than the same number of single pieces');
   if (packed && costPiece !== null && costPack !== null && Math.abs(costPack / units - costPiece) > 0.005) {
     warnings.push(`Cost per pack ÷ ${units} is ${r6(costPack / units)}, not the piece cost ${costPiece}. The piece cost is used`);
   }
@@ -126,9 +130,9 @@ export function normalizeRow(cells, map) {
     packLabel: packed ? text(raw.packLabel, 20) : '',
     costPrice: r6(cost ?? 0),
     retailPrice: r6(retail ?? 0),
-    wholesalePrice: r6(wholesale),
-    packRetailPrice: packed && retailPack !== null ? r6(retailPack) : 0,
-    packWholesalePrice: packed && wsPack !== null ? r6(wsPack) : 0,
+    wholesalePrice: 0,      // retired: a full pack's price is the wholesale price
+    packRetailPrice: packed && packPrice !== null ? r6(packPrice) : 0,
+    packWholesalePrice: 0,
     reorderLevel: reorderLevel ?? 0,
     stock,
   };

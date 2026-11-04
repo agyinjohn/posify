@@ -70,7 +70,8 @@ export function buildOverview({ sales, prevSales = [], refunds = [], custPayment
   const products_ = new Map();
   const categories = new Map();
   const cashiers = new Map();
-  const modes = { retail: { revenue: 0, sales: 0 }, wholesale: { revenue: 0, sales: 0 } };
+  // How it was bought: single pieces (retail price) or full packs (wholesale price).
+  const byUnit = { pieces: { revenue: 0, qty: 0 }, packs: { revenue: 0, qty: 0 } };
   const byMethod = Object.fromEntries(PAYMENT_METHODS.map((m) => [m, 0]));
 
   for (const s of live) {
@@ -81,7 +82,6 @@ export function buildOverview({ sales, prevSales = [], refunds = [], custPayment
     if (day) { day.revenue += n.net; day.profit += n.profit; if (isSale) day.sales += 1; }
     byHour[at.getUTCHours()].revenue += n.net; if (isSale) byHour[at.getUTCHours()].sales += 1;
     byWeekday[at.getUTCDay()].revenue += n.net; if (isSale) byWeekday[at.getUTCDay()].sales += 1;
-    const mode = modes[s.mode] ?? modes.retail; mode.revenue += n.net; if (isSale) mode.sales += 1;
     for (const p of s.payments || []) byMethod[p.method] = (byMethod[p.method] || 0) + p.amount;
 
     const cid = String(s.cashier?._id ?? s.cashier ?? '');
@@ -97,6 +97,14 @@ export function buildOverview({ sales, prevSales = [], refunds = [], custPayment
       const id = String(it.product);
       const row = products_.get(id) || { id, name: it.name, sku: it.sku, qty: 0, revenue: 0, profit: 0 };
       row.qty += rem; row.revenue += rev; row.profit += prof; products_.set(id, row);
+      // Split the line's money between the packs and the loose pieces in it, in proportion to their prices.
+      const packs = it.packQty || 0;
+      const loose = it.loosePcs ?? (packs ? 0 : it.qty);
+      const packGross = packs ? packs * (it.packPrice ?? (it.unitPrice || 0) * (it.unitsPerPack || 1)) : 0;
+      const looseGross = loose * (it.unitPrice || 0);
+      const share = packGross + looseGross > 0 ? packGross / (packGross + looseGross) : (packs ? 1 : 0);
+      byUnit.packs.revenue += rev * share; byUnit.packs.qty += packs * frac;
+      byUnit.pieces.revenue += rev * (1 - share); byUnit.pieces.qty += loose * frac;
       const cat = productById.get(id)?.category || 'Uncategorised';
       const cr = categories.get(cat) || { name: cat, revenue: 0, profit: 0 };
       cr.revenue += rev; cr.profit += prof; categories.set(cat, cr);
@@ -128,7 +136,7 @@ export function buildOverview({ sales, prevSales = [], refunds = [], custPayment
     productsSold: productRows.length,
     categories: topWithOther([...categories.values()].map(round), 6),
     cashiers: [...cashiers.values()].map(round).sort((a, b) => b.revenue - a.revenue),
-    modes: Object.entries(modes).map(([mode, v]) => ({ mode, ...round(v) })),
+    byUnit: Object.entries(byUnit).map(([unit, v]) => ({ unit, revenue: r2(v.revenue), qty: r3(v.qty) })),
     idleStock: { count: idle.length, value: r2(idle.reduce((t, p) => t + p.value, 0)), top: idle.slice(0, 8) },
   };
 }

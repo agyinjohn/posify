@@ -23,7 +23,6 @@ export default function Sell() {
   const [products, setProducts] = useState(() => cacheGet('/products') ?? []);
   const [customers, setCustomers] = useState(() => cacheGet('/customers?q=') ?? []);
   const [q, setQ] = useState('');
-  const [mode, setMode] = useState('retail');
   const [cart, setCart] = useState([]);
   const [orderDiscount, setOrderDiscount] = useState('');
   const [paying, setPaying] = useState(false);
@@ -65,7 +64,8 @@ export default function Sell() {
   useEffect(() => { load(); loadShift(); loadHeldCount(); searchRef.current?.focus(); }, [load, loadShift, loadHeldCount]);
 
   const byId = useMemo(() => new Map(products.map((p) => [p._id, p])), [products]);
-  const priceOf = useCallback((p) => pieceUnitPrice(p, mode), [mode]);
+  // Single pieces pay the piece (retail) price, a full pack the pack (wholesale) price: see bulk.js.
+  const priceOf = useCallback((p) => pieceUnitPrice(p), []);
 
   const search = useDeferredValue(q); // typing stays instant while a big catalogue is filtered
   const results = useMemo(() => {
@@ -79,9 +79,9 @@ export default function Sell() {
     const hasPack = p.unitsPerPack > 1;
     const unit = c.unit || 'piece';
     const pieceQty = (unit === 'pack' && hasPack) ? r2(c.qty * p.unitsPerPack) : c.qty;
-    const gross = lineGross(p, mode, unit, c.qty); // a carton can have its own price, not just pieces x piece price
+    const gross = lineGross(p, unit, c.qty); // pieces at the piece price, packs at the pack price
     const discount = Math.min(Math.max(Number(c.discount) || 0, 0), gross);
-    return { ...c, p, unit, hasPack, pieceQty, price: priceOf(p), packPrice: hasPack ? packPriceFor(p, mode) : null, gross, discount, total: r2(gross - discount) };
+    return { ...c, p, unit, hasPack, pieceQty, price: priceOf(p), packPrice: hasPack ? packPriceFor(p) : null, gross, discount, total: r2(gross - discount) };
   });
   const subtotal = r2(lines.reduce((s, l) => s + l.total, 0));
   const od = Math.min(Math.max(Number(orderDiscount) || 0, 0), subtotal);
@@ -124,7 +124,6 @@ export default function Sell() {
         method: 'POST',
         body: {
           label: holdLabel.trim(),
-          mode,
           orderDiscount: od,
           items: lines.map((l) => ({ productId: l.id, qty: l.qty, unit: l.unit, discount: l.discount || 0 })),
         },
@@ -136,7 +135,6 @@ export default function Sell() {
   };
 
   const resumeSale = (held) => {
-    setMode(held.mode);
     setOrderDiscount(String(held.orderDiscount || ''));
     setCart(held.items.map((i) => ({ id: String(i.productId), qty: i.qty, unit: i.unit || 'piece', discount: i.discount || '' })));
     // Products deactivated or deleted since the sale was held can't be sold: say so instead of dropping them silently.
@@ -192,13 +190,6 @@ export default function Sell() {
             onKeyDown={onSearchKey}
             aria-label="Search products"
           />
-          <div className="seg sell-seg" role="group" aria-label="Sale type">
-            {['retail', 'wholesale'].map((m) => (
-              <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
-                {m === 'retail' ? 'Retail' : 'Wholesale'}
-              </button>
-            ))}
-          </div>
         </div>
 
         <ul className="plist">
@@ -216,7 +207,7 @@ export default function Sell() {
                   </span>
                   <span className="price">
                     {p.unitsPerPack > 1 && p.stock >= p.unitsPerPack
-                      ? <>{fmt(packPriceFor(p, mode))}<small> / {packName(p)}</small></>
+                      ? <>{fmt(packPriceFor(p))}<small> / {packName(p)}</small></>
                       : fmt(priceOf(p))}
                   </span>
                 </span>
@@ -322,7 +313,7 @@ export default function Sell() {
           onCustomerAdded={(c) => setCustomers((s) => [...s, c])}
           build={(payments, customerId) => ({
             items: lines.map((l) => ({ productId: l.id, qty: l.qty, unit: l.unit, discount: l.discount || 0 })),
-            mode, orderDiscount: od, payments, customerId: customerId || undefined,
+            orderDiscount: od, payments, customerId: customerId || undefined,
           })}
           onDone={done}
         />
@@ -396,7 +387,7 @@ function ResumeDrawer({ onClose, onResume, cartHasItems }) {
         <div className="held-row" key={h._id}>
           <div>
             <strong>{h.label || 'Unnamed sale'}</strong>
-            <small>{dateTime(h.createdAt)} · {h.items.length} item{h.items.length !== 1 ? 's' : ''} · {h.mode}{h.cashier?.name ? ` · ${h.cashier.name}` : ''}</small>
+            <small>{dateTime(h.createdAt)} · {h.items.length} item{h.items.length !== 1 ? 's' : ''} {h.cashier?.name ? ` · ${h.cashier.name}` : ''}</small>
           </div>
           <div className="acts">
             {confirming === h._id ? (

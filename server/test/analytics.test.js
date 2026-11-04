@@ -53,7 +53,7 @@ test('overview: trend by day/hour/weekday, change vs previous, payments net of r
   assert.equal(o.totals.debtCollected, 25);
   assert.equal(o.totals.refunded, 10);
   assert.deepEqual(o.cashiers.map((c) => c.name), ['Ama', 'Kofi']);
-  assert.deepEqual(o.modes.map((m) => [m.mode, m.sales]), [['retail', 1], ['wholesale', 1]]);
+  assert.deepEqual(o.byUnit.map((u) => [u.unit, u.revenue]), [['pieces', 200], ['packs', 0]]);
 });
 
 test('overview: best products, categories and stock that did not sell', () => {
@@ -75,4 +75,13 @@ test('long lists fold the tail into one "Other" row', () => {
   assert.equal(out[6].name, 'Other (3)');
   assert.equal(out[6].revenue, 92 + 93 + 94 - 0); // 94 + 93 + 92
   assert.equal(topWithOther(rows.slice(0, 7), 6).length, 7); // 7 rows: no point folding one
+});
+
+test('money is split between single pieces and full packs', () => {
+  const o = buildOverview({
+    from: '2026-11-01', to: '2026-11-03', products, users,
+    sales: [sale({ total: 156, subtotal: 156, items: [{ product: 'p2', name: 'Oil', qty: 27, returnedQty: 0, lineTotal: 156, costPrice: 4, packQty: 2, loosePcs: 3, packPrice: 60, unitPrice: 12, unitsPerPack: 12 }] })],
+  });
+  // 2 cartons x 60 = 120 and 3 pieces x 12 = 36
+  assert.deepEqual(o.byUnit.map((u) => [u.unit, u.revenue, u.qty]), [['pieces', 36, 3], ['packs', 120, 2]]);
 });

@@ -5,10 +5,12 @@ import { priceSale, settlePayments, SaleError } from '../src/lib/pricing.js';
 const mk = (over = {}) => ({ _id: 'p1', name: 'Rice 5kg', sku: 'R5', costPrice: 40, retailPrice: 60, wholesalePrice: 50, active: true, ...over });
 const map = (...ps) => new Map(ps.map((p) => [p._id, p]));
 
-test('retail uses retail price, wholesale uses wholesale price', () => {
+test('pieces always sell at the piece price, whatever sale type an older till sends', () => {
   const m = map(mk());
   assert.equal(priceSale({ lines: [{ productId: 'p1', qty: 2 }], productsById: m, mode: 'retail' }).total, 120);
-  assert.equal(priceSale({ lines: [{ productId: 'p1', qty: 2 }], productsById: m, mode: 'wholesale' }).total, 100);
+  assert.equal(priceSale({ lines: [{ productId: 'p1', qty: 2 }], productsById: m, mode: 'wholesale' }).total, 120);
+  assert.equal(priceSale({ lines: [{ productId: 'p1', qty: 2 }], productsById: m }).total, 120); // new tills send no mode
+  assert.throws(() => priceSale({ lines: [{ productId: 'p1', qty: 2 }], productsById: m, mode: 'cheap' }), SaleError);
 });
 
 test('wholesale falls back to retail when no wholesale price is set', () => {
@@ -115,7 +117,7 @@ test('product with unitsPerPack=1 ignores unit:pack', () => {
 });
 
 test('packs and loose pieces of one product are kept apart for the receipt', () => {
-  const p = mk({ unitsPerPack: 12, packLabel: 'ctn', retailPrice: 5 });
+  const p = mk({ unitsPerPack: 12, packLabel: 'ctn', retailPrice: 5, wholesalePrice: 0 });
   const r = priceSale({
     lines: [{ productId: 'p1', qty: 2, unit: 'pack' }, { productId: 'p1', qty: 3 }],
     productsById: map(p), mode: 'retail',
@@ -167,15 +169,16 @@ test('without a pack price a pack is just pieces x the piece price', () => {
   assert.equal(packSpecificPrice(p, 'retail'), null);
 });
 
-test('wholesale: own pack price, else wholesale piece price x pieces, else the retail pack price', () => {
-  const sale = (p) => priceSale({ lines: [{ productId: 'p1', qty: 1, unit: 'pack' }], productsById: map(p), mode: 'wholesale' }).total;
-  assert.equal(sale(carton({ packRetailPrice: 120, packWholesalePrice: 100 })), 100);
-  assert.equal(sale(carton({ packRetailPrice: 120, wholesalePrice: 9 })), 108);    // 9 x 12, not the retail carton price
-  assert.equal(sale(carton({ packRetailPrice: 120 })), 120);                        // no wholesale at all: retail carton price
-  assert.equal(sale(carton()), 144);
-  // and by the piece, wholesale still falls back to retail
-  assert.equal(pieceUnitPrice(carton({ wholesalePrice: 9 }), 'wholesale'), 9);
-  assert.equal(pieceUnitPrice(carton(), 'wholesale'), 12);
+test('the carton price is the pack price; products saved before keep their old wholesale carton pricing', () => {
+  const sale = (p, mode) => priceSale({ lines: [{ productId: 'p1', qty: 1, unit: 'pack' }], productsById: map(p), mode }).total;
+  assert.equal(sale(carton({ packRetailPrice: 100 })), 100);
+  assert.equal(sale(carton({ packRetailPrice: 100 }), 'wholesale'), 100);      // the sale type changes nothing
+  assert.equal(sale(carton()), 144);                                            // no pack price: 12 x 12
+  // older records
+  assert.equal(sale(carton({ packRetailPrice: 120, packWholesalePrice: 100 })), 100); // the wholesale carton price wins
+  assert.equal(sale(carton({ wholesalePrice: 9 })), 108);                             // wholesale per piece, by the carton
+  // and single pieces are always the piece price
+  assert.equal(pieceUnitPrice(carton({ wholesalePrice: 9 })), 12);
 });
 
 test('a product with no pack size ignores any pack price', () => {

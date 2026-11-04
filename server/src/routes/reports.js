@@ -11,6 +11,7 @@ import { PAYMENT_METHODS, r2 } from '../lib/money.js';
 import { toCsv } from '../lib/csv.js';
 import User from '../models/User.js';
 import { buildOverview, previousRange } from '../lib/analytics.js';
+import { packPriceFor } from '../lib/unitPrices.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
@@ -77,15 +78,15 @@ router.get('/stock', asyncHandler(async (req, res) => {
   const products = await Product.find({ active: true }).sort({ name: 1 }).lean();
   const rows = products.map((p) => ({
     name: p.name, sku: p.sku, category: p.category, stock: p.stock, reorderLevel: p.reorderLevel,
-    costPrice: p.costPrice, retailPrice: p.retailPrice, wholesalePrice: p.wholesalePrice,
+    costPrice: p.costPrice, retailPrice: p.retailPrice, packPrice: (p.unitsPerPack > 1 ? packPriceFor(p) : null), unitsPerPack: p.unitsPerPack || 1,
     value: r2(p.stock * p.costPrice), low: p.stock <= p.reorderLevel,
   }));
   if (req.query.format === 'csv') {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="stock.csv"');
     return res.send(toCsv(
-      ['Name', 'SKU', 'Category', 'In stock', 'Reorder level', 'Cost', 'Retail', 'Wholesale', 'Stock value', 'Low'],
-      rows.map((r) => [r.name, r.sku, r.category, r.stock, r.reorderLevel, r.costPrice, r.retailPrice, r.wholesalePrice, r.value, r.low ? 'Yes' : 'No']),
+      ['Name', 'SKU', 'Category', 'In stock (pieces)', 'Reorder level', 'Cost per piece', 'Price per piece', 'Pieces per pack', 'Price per pack', 'Stock value', 'Low'],
+      rows.map((r) => [r.name, r.sku, r.category, r.stock, r.reorderLevel, r.costPrice, r.retailPrice, r.unitsPerPack > 1 ? r.unitsPerPack : '', r.packPrice ?? '', r.value, r.low ? 'Yes' : 'No']),
     ));
   }
   res.json({ totalValue: r2(rows.reduce((s, r) => s + r.value, 0)), rows });
@@ -93,7 +94,7 @@ router.get('/stock', asyncHandler(async (req, res) => {
 
 // Overview for a date range: totals vs the previous period of the same length, trends by day / hour / weekday,
 // payment methods, best products, categories, cashiers, retail vs wholesale, and stock that did not sell.
-const SALE_FIELDS = 'createdAt status mode total subtotal orderDiscount discountTotal balance creditReturned refundedTotal payments cashier items.product items.name items.sku items.qty items.returnedQty items.lineTotal items.costPrice';
+const SALE_FIELDS = 'createdAt status mode total subtotal orderDiscount discountTotal balance creditReturned refundedTotal payments cashier items.product items.name items.sku items.qty items.returnedQty items.lineTotal items.costPrice items.packQty items.loosePcs items.packPrice items.unitPrice items.unitsPerPack';
 router.get('/overview', asyncHandler(async (req, res) => {
   const { start, end, from, to } = dayRange(req.query.from, req.query.to);
   const prev = previousRange(from, to);
