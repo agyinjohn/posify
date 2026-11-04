@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { CardSkeleton, Field, Modal, RefreshIndicator, useToast } from '../ui.jsx';
 import { fmt, qtyFmt } from '../format.js';
-import { packName, toPackPrice, toPiecePrice, toPieces, toPacks, unitsOf } from '../bulk.js';
+import { packName, packPriceFor, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
 
-const PRICE_KEYS = ['costPrice', 'retailPrice', 'wholesalePrice'];
-const blank = { name: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', wholesalePrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
+const blank = { name: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', wholesalePrice: '', packRetailPrice: '', packWholesalePrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
 
 export default function Products() {
   const toast = useToast();
@@ -51,8 +50,8 @@ export default function Products() {
               <div className="product-card-prices">
                 {unitsOf(p) > 1 ? (
                   <>
-                    <span className="product-card-price">{fmt(toPackPrice(p.retailPrice, unitsOf(p)))}<small> per {packName(p)}</small></span>
-                    <span className="product-card-ws">{fmt(p.retailPrice)} each{p.wholesalePrice > 0 ? ` · WS ${fmt(toPackPrice(p.wholesalePrice, unitsOf(p)))}` : ''}</span>
+                    <span className="product-card-price">{fmt(packPriceFor(p, 'retail'))}<small> per {packName(p)}</small></span>
+                    <span className="product-card-ws">{fmt(p.retailPrice)} each{p.wholesalePrice > 0 || p.packWholesalePrice > 0 ? ` · WS ${fmt(packPriceFor(p, 'wholesale'))}` : ''}</span>
                   </>
                 ) : (
                   <>
@@ -82,73 +81,70 @@ export default function Products() {
   );
 }
 
+// Cost and selling prices for a product that comes in cartons/boxes: the owner can type the price per piece, per
+// carton, or both. Leave one empty and it is worked out from the other (carton / pieces per carton, or piece x
+// pieces per carton). A carton price typed here is kept as its own price, so cartons can sell for less than the
+// pieces added up; a piece price with no carton price just sells cartons at pieces x piece price.
+const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+const money = (n) => (n === null || n === undefined ? undefined : fmt(n));
+
 function ProductForm({ p, onClose, onSaved }) {
   const toast = useToast();
   const isNew = !p._id;
-  // Prices are stored per piece, but the owner thinks in cartons: when the product has a pack size,
-  // cost / retail / wholesale (and opening stock) are typed per pack and converted on save.
-  const [f, setF] = useState(() => {
-    const base = { ...blank, ...p, barcode: p.barcode || '' };
-    const u = unitsOf(base);
-    if (u > 1) for (const k of PRICE_KEYS) if (base[k] !== '' && base[k] != null) base[k] = String(toPackPrice(base[k], u));
-    return base;
-  });
-  const init = useRef({ prices: PRICE_KEYS.map((k) => f[k]), units: unitsOf(f) }); // to leave untouched prices exactly as stored
-  const [mode, setMode] = useState('pack'); // 'pack' | 'piece': what the price fields mean when a pack size is set
+  const [f, setF] = useState(() => ({
+    ...blank, ...p, barcode: p.barcode || '',
+    costPrice: p.costPrice ?? '', retailPrice: p.retailPrice ?? '',
+    wholesalePrice: p.wholesalePrice > 0 ? p.wholesalePrice : '',
+    costPack: '',
+    packRetailPrice: p.packRetailPrice > 0 ? p.packRetailPrice : '',
+    packWholesalePrice: p.packWholesalePrice > 0 ? p.packWholesalePrice : '',
+  }));
+  const [stockUnit, setStockUnit] = useState('pack'); // opening stock typed in packs or pieces
   const [busy, setBusy] = useState(false);
   const [pendingImage, setPendingImage] = useState(null);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   const units = unitsOf({ unitsPerPack: f.unitsPerPack });
-  const packMode = units > 1 && mode === 'pack';
+  const packed = units > 1;
   const pack = packName({ packLabel: f.packLabel });
 
-  const onUnitsChange = (e) => {
-    const next = unitsOf({ unitsPerPack: e.target.value });
-    const g = { ...f, unitsPerPack: e.target.value };
-    // Existing product that had no pack size: keep each piece's price the same by showing it per pack.
-    if (!isNew && units === 1 && next > 1 && mode === 'pack') {
-      for (const k of PRICE_KEYS) if (g[k] !== '' && g[k] != null) g[k] = String(toPackPrice(g[k], next));
-    }
-    setF(g);
+  // What each empty field would be worked out as (shown as its placeholder).
+  const piece = (packVal) => (num(packVal) === null ? null : toPiecePrice(packVal, units));
+  const whole = (pieceVal) => (num(pieceVal) === null ? null : toPackPrice(pieceVal, units));
+  const auto = {
+    cost: num(f.costPrice) !== null ? null : piece(f.costPack),
+    costPack: num(f.costPack) !== null ? null : whole(f.costPrice),
+    retail: num(f.retailPrice) !== null ? null : piece(f.packRetailPrice),
+    retailPack: num(f.packRetailPrice) !== null ? null : whole(f.retailPrice),
+    ws: num(f.wholesalePrice) !== null ? null : piece(f.packWholesalePrice),
+    wsPack: num(f.packWholesalePrice) !== null ? null : whole(f.wholesalePrice),
   };
+  const ph = (n, word) => (n === null ? '' : `${n}  (${word})`);
 
-  const switchMode = (m) => {
-    if (m === mode) return;
-    const g = { ...f };
-    for (const k of PRICE_KEYS) {
-      if (g[k] === '' || g[k] == null) continue;
-      g[k] = String(m === 'piece' ? toPiecePrice(g[k], units) : toPackPrice(g[k], units));
-    }
-    if (isNew && g.stock !== '' && g.stock != null) g.stock = String(m === 'piece' ? toPieces(g.stock, units) : toPacks(g.stock, units));
-    setF(g); setMode(m);
-  };
-
-  const toPiece = (v) => (packMode ? toPiecePrice(v, units) : Number(v));
-  const other = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : (packMode ? toPiecePrice(v, units) : toPackPrice(v, units)));
-  const otherHint = (v) => {
-    const o = other(v);
-    if (o === null || units <= 1) return undefined;
-    return packMode ? `= ${fmt(o)} per piece` : `= ${fmt(o)} per ${pack}`;
-  };
-  const margin = Number(f.costPrice) > 0 && Number(f.retailPrice) > 0
-    ? Math.round(((Number(f.retailPrice) - Number(f.costPrice)) / Number(f.costPrice)) * 1000) / 10 : null;
-  const unitWord = packMode ? pack : 'piece';
+  // What will actually be saved.
+  const costPiece = num(f.costPrice) ?? piece(f.costPack);
+  const retailPiece = num(f.retailPrice) ?? piece(f.packRetailPrice);
+  const retailPack = packed ? (num(f.packRetailPrice) ?? (retailPiece === null ? null : toPackPrice(retailPiece, units))) : null;
+  const costPack = packed ? (num(f.costPack) ?? (costPiece === null ? null : toPackPrice(costPiece, units))) : null;
+  const margin = (price, cost) => (price > 0 && cost > 0 ? Math.round(((price - cost) / cost) * 1000) / 10 : null);
+  const mPiece = margin(retailPiece, costPiece);
+  const mPack = packed ? margin(retailPack, costPack) : null;
+  const costMismatch = packed && num(f.costPrice) !== null && num(f.costPack) !== null && Math.abs(toPiecePrice(f.costPack, units) - Number(f.costPrice)) > 0.005;
 
   const save = async (e) => {
-    e.preventDefault(); setBusy(true);
+    e.preventDefault();
+    if (retailPiece === null) return toast('Enter a selling price (per piece or per pack)', 'err');
+    if (costPiece === null) return toast('Enter a cost (per piece or per pack)', 'err');
+    setBusy(true);
+    const wsPiece = num(f.wholesalePrice) ?? piece(f.packWholesalePrice);
     const body = {
       name: f.name, sku: f.sku, barcode: f.barcode, category: f.category,
-      costPrice: toPiece(f.costPrice) || 0, retailPrice: toPiece(f.retailPrice),
-      wholesalePrice: toPiece(f.wholesalePrice) || 0, reorderLevel: Number(f.reorderLevel) || 0,
-      unitsPerPack: units, packLabel: f.packLabel.trim(),
+      costPrice: costPiece, retailPrice: retailPiece, wholesalePrice: wsPiece ?? 0,
+      packRetailPrice: packed ? num(f.packRetailPrice) ?? 0 : 0,
+      packWholesalePrice: packed ? num(f.packWholesalePrice) ?? 0 : 0,
+      reorderLevel: Number(f.reorderLevel) || 0, unitsPerPack: units, packLabel: f.packLabel.trim(),
     };
-    // Editing: converting a per-pack figure back can round a price that was never touched (10.333 -> 10.333333),
-    // so only send the prices the owner actually changed.
-    if (!isNew && units === init.current.units) {
-      PRICE_KEYS.forEach((k, i) => { if (f[k] === init.current.prices[i]) delete body[k]; });
-    }
-    if (isNew) body.stock = packMode ? toPieces(f.stock || 0, units) : Number(f.stock) || 0;
+    if (isNew) body.stock = packed && stockUnit === 'pack' ? toPieces(f.stock || 0, units) : Number(f.stock) || 0;
     try {
       const saved = await api(isNew ? '/products' : `/products/${p._id}`, { method: isNew ? 'POST' : 'PATCH', body });
       cacheInvalidatePrefix('/products');
@@ -172,6 +168,10 @@ function ProductForm({ p, onClose, onSaved }) {
     catch (err) { toast(err.message, 'err'); }
   };
 
+  const priceInput = (key, placeholder, required) => (
+    <input type="number" min="0" step="any" inputMode="decimal" value={f[key]} onChange={set(key)} placeholder={placeholder} required={required} />
+  );
+
   return (
     <Modal title={isNew ? 'Add product' : `Edit ${p.name}`} onClose={onClose} wide>
       <form onSubmit={save} className="grid2">
@@ -180,34 +180,55 @@ function ProductForm({ p, onClose, onSaved }) {
         <Field label="Barcode" hint="Scan it here, or leave blank"><input value={f.barcode} onChange={set('barcode')} /></Field>
         <Field label="Category"><input value={f.category} onChange={set('category')} /></Field>
 
-        {/* Pack size first, so the price fields below know what they are measuring */}
-        <Field label="Pieces per pack" hint="e.g. 12 for a carton of 12. Leave 1 if it is only sold by the piece"><input type="number" min="1" step="1" value={f.unitsPerPack} onChange={onUnitsChange} /></Field>
+        {/* Pack size first, so the price fields below know what a pack is */}
+        <Field label="Pieces per pack" hint="e.g. 12 for a carton of 12. Leave 1 if it is only sold by the piece"><input type="number" min="1" step="1" value={f.unitsPerPack} onChange={set('unitsPerPack')} /></Field>
         <Field label="Pack name" hint='e.g. "ctn", "box", "bag"'><input value={f.packLabel} onChange={set('packLabel')} placeholder="ctn" maxLength={20} /></Field>
 
-        {units > 1 && (
-          <div className="span2 bulk-mode">
-            <span>Enter prices and stock per</span>
-            <div className="seg" role="group" aria-label="Price entry unit">
-              <button type="button" className={packMode ? 'on' : ''} onClick={() => switchMode('pack')}>{pack} (of {units})</button>
-              <button type="button" className={!packMode ? 'on' : ''} onClick={() => switchMode('piece')}>piece</button>
-            </div>
-            <small>{packMode ? `Type what a whole ${pack} costs and sells for. Each piece is worked out for you.` : 'Type the price of a single piece.'}</small>
-          </div>
+        {packed && (
+          <p className="span2 hint bulk-explain">
+            Enter the price per piece, per {pack}, or both. If you leave one empty it is worked out from the other
+            ({pack} ÷ {units} for a piece, piece × {units} for a {pack}). A price you type for the {pack} is kept as its own
+            price, so a {pack} can sell for less than {units} single pieces.
+          </p>
         )}
 
-        <Field label={`Cost price per ${unitWord} (GH₵)`} hint={otherHint(f.costPrice)}>
-          <input type="number" min="0" step="any" inputMode="decimal" value={f.costPrice} onChange={set('costPrice')} required />
+        <Field label={`Cost per piece (GH₵)`} hint={packed ? undefined : undefined}>
+          {priceInput('costPrice', ph(auto.cost, `${f.costPack} ÷ ${units}`), !packed || num(f.costPack) === null)}
         </Field>
-        <Field label={`Retail price per ${unitWord} (GH₵)`} hint={[otherHint(f.retailPrice), margin !== null ? `margin ${margin}%` : null].filter(Boolean).join(' · ') || undefined}>
-          <input type="number" min="0" step="any" inputMode="decimal" value={f.retailPrice} onChange={set('retailPrice')} required />
+        {packed && (
+          <Field label={`Cost per ${pack} (GH₵)`} hint={costMismatch ? `${pack} ÷ ${units} = ${fmt(toPiecePrice(f.costPack, units))}, not the piece cost above. Profit and stock value use the piece cost.` : undefined}>
+            {priceInput('costPack', ph(auto.costPack, `${f.costPrice} × ${units}`), false)}
+          </Field>
+        )}
+
+        <Field label="Retail price per piece (GH₵)" hint={mPiece !== null ? `margin ${mPiece}%` : undefined}>
+          {priceInput('retailPrice', ph(auto.retail, `${f.packRetailPrice} ÷ ${units}`), !packed || num(f.packRetailPrice) === null)}
         </Field>
-        <Field label={`Wholesale price per ${unitWord} (GH₵)`} hint={Number(f.wholesalePrice) > 0 ? otherHint(f.wholesalePrice) : 'Leave 0 to use the retail price'}>
-          <input type="number" min="0" step="any" inputMode="decimal" value={f.wholesalePrice} onChange={set('wholesalePrice')} />
+        {packed && (
+          <Field label={`Retail price per ${pack} (GH₵)`} hint={[auto.retailPack !== null ? `sells at ${money(auto.retailPack)} unless you set a ${pack} price` : null, mPack !== null ? `margin ${mPack}%` : null].filter(Boolean).join(' · ') || undefined}>
+            {priceInput('packRetailPrice', ph(auto.retailPack, `${f.retailPrice} × ${units}`), false)}
+          </Field>
+        )}
+
+        <Field label="Wholesale price per piece (GH₵)" hint="Leave empty to use the retail price">
+          {priceInput('wholesalePrice', ph(auto.ws, `${f.packWholesalePrice} ÷ ${units}`), false)}
         </Field>
-        <Field label={units > 1 ? 'Reorder level (pieces)' : 'Reorder level'} hint="Show a low-stock warning when stock drops to or below this number"><input type="number" min="0" step="any" value={f.reorderLevel} onChange={set('reorderLevel')} /></Field>
+        {packed && (
+          <Field label={`Wholesale price per ${pack} (GH₵)`} hint="Leave empty to use the wholesale piece price × pieces, or else the retail price">
+            {priceInput('packWholesalePrice', ph(auto.wsPack, `${f.wholesalePrice} × ${units}`), false)}
+          </Field>
+        )}
+
+        <Field label={packed ? 'Reorder level (pieces)' : 'Reorder level'} hint="Show a low-stock warning when stock drops to or below this number"><input type="number" min="0" step="any" value={f.reorderLevel} onChange={set('reorderLevel')} /></Field>
         {isNew && (
-          <Field label={`Opening stock (${unitWord}${packMode ? 's' : ''})`} hint={packMode && Number(f.stock) > 0 ? `= ${toPieces(f.stock, units)} pieces` : undefined}>
+          <Field label={`Opening stock (${packed && stockUnit === 'pack' ? `${pack}s` : 'pieces'})`} hint={packed && stockUnit === 'pack' && Number(f.stock) > 0 ? `= ${toPieces(f.stock, units)} pieces` : undefined}>
             <input type="number" min="0" step="any" inputMode="decimal" value={f.stock} onChange={set('stock')} />
+            {packed && (
+              <div className="seg stock-unit" role="group" aria-label="Opening stock unit">
+                <button type="button" className={stockUnit === 'pack' ? 'on' : ''} onClick={() => setStockUnit('pack')}>{pack}s</button>
+                <button type="button" className={stockUnit === 'piece' ? 'on' : ''} onClick={() => setStockUnit('piece')}>pieces</button>
+              </div>
+            )}
           </Field>
         )}
         {isNew && (

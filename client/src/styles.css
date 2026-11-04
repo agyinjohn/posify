@@ -1054,3 +1054,6 @@ img, video { max-width: 100%; }
 @media (max-width: 400px) { .recovery-sheet ol { grid-template-columns: 1fr; } }
 
 @media print { .recovery-sheet ol { grid-template-columns: 1fr; } .recovery-sheet { border: 0; } }
+
+.bulk-explain { background: var(--paper); border-radius: 8px; padding: .6rem .8rem; margin: 0 0 .9rem; }
+.stock-unit { margin-top: .4rem; }

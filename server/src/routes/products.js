@@ -11,7 +11,7 @@ import { SaleError } from '../lib/pricing.js';
 import { audit } from '../lib/audit.js';
 
 const router = Router();
-const FIELDS = ['name', 'sku', 'barcode', 'category', 'costPrice', 'retailPrice', 'wholesalePrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
+const FIELDS = ['name', 'sku', 'barcode', 'category', 'costPrice', 'retailPrice', 'wholesalePrice', 'packRetailPrice', 'packWholesalePrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
@@ -20,6 +20,11 @@ const upload = multer({
       ? cb(null, true)
       : cb(new SaleError('Image must be JPG, PNG or WebP')),
 });
+
+// A product with no pack size cannot have pack prices.
+const dropPackPricesIfNoPack = (data) => {
+  if (data.unitsPerPack !== undefined && !(Number(data.unitsPerPack) > 1)) { data.packRetailPrice = 0; data.packWholesalePrice = 0; }
+};
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
   const { q, category, lowStock, all } = req.query;
@@ -38,6 +43,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 
 router.post('/', requireAuth, requireOwner, asyncHandler(async (req, res) => {
   const data = pick(req.body, FIELDS);
+  dropPackPricesIfNoPack(data);
   if (!data.barcode) delete data.barcode;
   const opening = Number(req.body.stock) || 0;
   if (opening < 0) throw new SaleError('Opening stock cannot be negative');
@@ -52,6 +58,7 @@ router.post('/', requireAuth, requireOwner, asyncHandler(async (req, res) => {
 router.patch('/:id', requireAuth, requireOwner, asyncHandler(async (req, res) => {
   assertId(req.params.id);
   const set = pick(req.body, [...FIELDS, 'active']); // stock is deliberately not editable here
+  dropPackPricesIfNoPack(set);
   const update = { $set: set };
   if (set.barcode === '' || set.barcode === null) {
     delete set.barcode;
@@ -60,7 +67,7 @@ router.patch('/:id', requireAuth, requireOwner, asyncHandler(async (req, res) =>
   const product = await Product.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
   if (!product) return res.status(404).json({ error: 'Product not found' });
   // Log price changes explicitly so they are easy to filter in the audit log.
-  const priceKeys = ['costPrice', 'retailPrice', 'wholesalePrice'];
+  const priceKeys = ['costPrice', 'retailPrice', 'wholesalePrice', 'packRetailPrice', 'packWholesalePrice'];
   const priceChanged = priceKeys.some((k) => set[k] !== undefined);
   audit({ req, action: priceChanged ? 'product.price' : 'product.edit', target: product.name, targetId: product._id, detail: set });
   res.json(product);

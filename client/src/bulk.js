@@ -29,3 +29,29 @@ export function breakdown(pieces, p) {
   if (rest || !whole) parts.push(`${rest} pcs`);
   return parts.join(' + ');
 }
+
+// ── Which price applies: per piece, or per pack (carton/box) ──────────────────────────────────────
+// Mirrors server/src/lib/unitPrices.js (same test vectors in both). A product always has a piece price and may
+// have its own pack price (a carton of 12 at 120 while pieces are 12 each). No pack price = pieces x piece price.
+export const pieceUnitPrice = (p, mode) => (mode === 'wholesale' && p.wholesalePrice > 0 ? p.wholesalePrice : p.retailPrice);
+
+export function packSpecificPrice(p, mode) {
+  if (unitsOf(p) <= 1) return null;
+  if (mode === 'wholesale') {
+    if (p.packWholesalePrice > 0) return p.packWholesalePrice;
+    if (p.wholesalePrice > 0) return null; // a wholesale piece price exists: pieces x that
+  }
+  return p.packRetailPrice > 0 ? p.packRetailPrice : null;
+}
+
+export const packPriceFor = (p, mode) => packSpecificPrice(p, mode) ?? r2(pieceUnitPrice(p, mode) * unitsOf(p));
+
+// Money for `qty` of the product in the given unit ('pack' counts packs, anything else counts pieces).
+export function lineGross(p, mode, unit, qty) {
+  const units = unitsOf(p);
+  if (unit === 'pack' && units > 1) {
+    const specific = packSpecificPrice(p, mode);
+    return specific !== null ? r2(specific * qty) : r2(pieceUnitPrice(p, mode) * qty * units);
+  }
+  return r2(pieceUnitPrice(p, mode) * qty);
+}
