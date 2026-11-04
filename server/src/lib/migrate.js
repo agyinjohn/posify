@@ -10,6 +10,15 @@ import { receiptCounterId } from '../models/Counter.js';
  *     in favour of the per-shop ones in the schemas.
  * Uses the raw collections for writes, so it is not blocked by the shop-scoping plugin or immutable fields.
  */
+// One line for the start-up log, so every start confirms the state of the data (not only the first one).
+export function statusLine({ shops, active, missing }) {
+  const list = Object.entries(missing).filter(([, n]) => n > 0);
+  const head = `[migrate] Status: ${shops} shop${shops === 1 ? '' : 's'} (${active} active)`;
+  if (!list.length) return `${head}; every record belongs to a shop.`;
+  const total = list.reduce((t, [, n]) => t + n, 0);
+  return `${head}; WARNING: ${total} record${total === 1 ? '' : 's'} still without a shop: ${list.map(([m, n]) => `${m} ${n}`).join(', ')}`;
+}
+
 const shopModels = () => Object.values(mongoose.models).filter((M) => M.modelName !== 'Shop' && M.schema.path('shop'));
 
 export async function migrateToShops({ shopName = 'My shop', log = console.log } = {}) {
@@ -48,5 +57,9 @@ export async function migrateToShops({ shopName = 'My shop', log = console.log }
       log(`[migrate] ${M.modelName}: could not sync indexes (${err.message})`);
     }
   }
-  return { migrated: untouched.map((M) => M.modelName), shop: first?._id ?? null };
+  const missing = {};
+  for (const M of models) missing[M.modelName] = await M.collection.countDocuments({ shop: { $exists: false } });
+  const [shops, active] = await Promise.all([Shop.countDocuments({}), Shop.countDocuments({ active: true })]);
+  log(statusLine({ shops, active, missing }));
+  return { migrated: untouched.map((M) => M.modelName), shop: first?._id ?? null, missing };
 }
