@@ -22,10 +22,18 @@ if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
   if (await PlatformAdmin.exists({ username })) {
     console.log(`[admin] Admin "${username}" already exists. Remove ADMIN_PASSWORD from the environment.`);
   } else {
-    checkPassword(process.env.ADMIN_PASSWORD, username);
-    await PlatformAdmin.create({ name: process.env.ADMIN_NAME || 'Platform admin', username, passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12) });
-    console.log(`[admin] Platform admin "${username}" created. Sign in at /admin, then remove ADMIN_PASSWORD from the environment.`);
+    // A bad setting must never stop the shops' server from starting: report it and carry on.
+    try {
+      checkPassword(process.env.ADMIN_PASSWORD, username);
+      await PlatformAdmin.create({ name: process.env.ADMIN_NAME || 'Platform admin', username, passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12) });
+      console.log(`[admin] Platform admin "${username}" created. Sign in at /admin, then remove ADMIN_PASSWORD from the environment.`);
+    } catch (err) {
+      console.error(`[admin] Platform admin NOT created: ${err.message}. Fix ADMIN_USERNAME / ADMIN_PASSWORD and restart.`);
+    }
   }
+}
+else if (!(await PlatformAdmin.exists({}))) {
+  console.log('[admin] No platform admin yet: set ADMIN_USERNAME and ADMIN_PASSWORD (both) and restart to create one for /admin.');
 }
 
 // AUTO-SEED (single shop, first boot only): with no shops at all, SEED_OWNER_PASSWORD creates one shop and its owner.
