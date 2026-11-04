@@ -4,13 +4,15 @@ import { api } from './api.js';
 import { cacheGet, cacheSet } from './cache.js';
 import { todayStr } from './format.js';
 
+const weekAgo = () => new Date(Date.parse(`${todayStr()}T00:00:00Z`) - 6 * 86_400_000).toISOString().slice(0, 10);
+
 const TTL = 5 * 60_000; // pages still refresh on open; this only decides how long a warm copy is shown instantly
 
 const keysFor = (isOwner) => {
   const t = todayStr();
   const common = ['/products', '/customers?q=', `/sales?from=${t}&to=${t}`];
   const owner = [
-    '/products?all=1&q=', `/reports/daily?date=${t}`, '/reports/stock', '/shifts', '/suppliers?q=',
+    '/products?all=1&q=', `/reports/overview?from=${weekAgo()}&to=${t}`, `/reports/daily?date=${t}`, '/reports/stock', '/shifts', '/suppliers?q=',
     '/purchase-orders', '/users', '/stock/movements', `/audit?from=${t}&to=${t}`,
   ];
   return isOwner ? [...common, ...owner] : common;
@@ -26,7 +28,7 @@ const ROUTE_KEYS = (isOwner) => {
     '/products': isOwner ? ['/products?all=1&q='] : [],
     '/stock': ['/products', '/stock/movements'],
     '/suppliers': ['/suppliers?q=', '/purchase-orders'],
-    '/reports': [`/reports/daily?date=${t}`, '/reports/stock'],
+    '/reports': [`/reports/overview?from=${weekAgo()}&to=${t}`, `/reports/daily?date=${t}`],
     '/shifts': ['/shifts'],
     '/users': ['/users'],
     '/audit': [`/audit?from=${t}&to=${t}`],
@@ -64,6 +66,8 @@ export function warmRoute(path, isOwner) {
 // Start warming now, then keep the copies fresh while the app is open.
 export function startPrefetch(isOwner) {
   warmAll(isOwner);
+  // The Reports screen (with its charts) is a separate download: fetch it while idle so it opens instantly.
+  if (isOwner && !saveData()) idle(() => import('./pages/Reports.jsx').catch(() => {}));
   const refresh = () => warmAll(isOwner, { force: true });
   const timer = setInterval(refresh, 60_000);
   const onVisible = () => { if (!document.hidden) refresh(); };
