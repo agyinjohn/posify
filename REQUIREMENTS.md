@@ -58,6 +58,12 @@ Update the boxes as you test and deliver.
 - [~] Shift open/close cash-up (opening float, closing cash count, variance, per-method summary)
 - [~] General audit log (stock movements, void records, login events, price edits, user changes)
 
+## Multi-shop
+- [~] One deployment, many shops: every record carries a shop id, added to every query automatically (fails closed)
+- [~] Platform admin at /admin: create shops with an owner and a temporary password shown until the owner changes it, rename, suspend / reactivate, reset owner password
+- [~] Sign-in finds the shop from the username (unique across shops); tokens carry the shop id; suspended shops are signed out
+- [~] Existing single-shop data becomes the first shop on upgrade; receipt numbers continue
+
 ## 5. Reports
 - [~] Daily summary: sales count, total, profit, discounts, credit given, debts collected, money received per payment method
 - [~] Sales by product over a date range (quantity, revenue, profit)

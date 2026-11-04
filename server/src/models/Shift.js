@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 const schema = new mongoose.Schema(
   {
@@ -19,8 +20,10 @@ const schema = new mongoose.Schema(
   { timestamps: true },
 );
 
-schema.index({ status: 1, createdAt: -1 });
+schema.index({ shop: 1, status: 1, createdAt: -1 });
 // At most one open shift, even if two tills press Open at the same moment.
-schema.index({ status: 1 }, { unique: true, partialFilterExpression: { status: 'open' } });
+schema.index({ shop: 1, status: 1 }, { unique: true, partialFilterExpression: { status: 'open' } }); // one open shift per shop
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('Shift', schema);

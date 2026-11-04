@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 import { PAYMENT_METHODS } from '../lib/money.js';
 
 const schema = new mongoose.Schema(
@@ -12,6 +13,8 @@ const schema = new mongoose.Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-schema.index({ createdAt: -1 });
+schema.index({ shop: 1, createdAt: -1 });
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('CustomerPayment', schema);

@@ -4,23 +4,47 @@ import { config } from './config.js';
 import { createApp } from './app.js';
 import User from './models/User.js';
 import { applyOwnerReset } from './lib/applyOwnerReset.js';
+import Shop from './models/Shop.js';
+import PlatformAdmin from './models/PlatformAdmin.js';
+import { migrateToShops } from './lib/migrate.js';
+import { checkPassword } from './lib/password.js';
 
 await mongoose.connect(config.mongoUri);
 console.log('MongoDB connected');
 
-// AUTO-SEED: creates the owner account on first boot if SEED_OWNER_PASSWORD is set.
-// Remove SEED_OWNER_PASSWORD from env vars after the first successful deploy.
-if (process.env.SEED_OWNER_PASSWORD) {
-  if (await User.exists({ role: 'owner' })) {
-    console.log('[seed] Owner already exists — skipping.');
+// Upgrade data from the single-shop version (does nothing once done). Must finish before requests are served.
+await migrateToShops({ shopName: process.env.SHOP_NAME || 'My shop' });
+
+// PLATFORM ADMIN: set ADMIN_USERNAME and ADMIN_PASSWORD (and optionally ADMIN_NAME) to create the first admin who
+// manages shops at /admin. Remove ADMIN_PASSWORD from the environment once you have signed in.
+if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
+  const username = process.env.ADMIN_USERNAME.toLowerCase().trim();
+  if (await PlatformAdmin.exists({ username })) {
+    console.log(`[admin] Admin "${username}" already exists. Remove ADMIN_PASSWORD from the environment.`);
   } else {
-    await User.create({
+    checkPassword(process.env.ADMIN_PASSWORD, username);
+    await PlatformAdmin.create({ name: process.env.ADMIN_NAME || 'Platform admin', username, passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12) });
+    console.log(`[admin] Platform admin "${username}" created. Sign in at /admin, then remove ADMIN_PASSWORD from the environment.`);
+  }
+}
+
+// AUTO-SEED (single shop, first boot only): with no shops at all, SEED_OWNER_PASSWORD creates one shop and its owner.
+// New shops are normally created by the platform admin. Remove SEED_OWNER_PASSWORD after the first deploy.
+if (process.env.SEED_OWNER_PASSWORD) {
+  if (await Shop.exists({}) || await User.exists({ role: 'owner' }).setOptions({ skipTenant: true })) {
+    console.log('[seed] A shop already exists — skipping.');
+  } else {
+    const shop = await Shop.create({ name: process.env.SHOP_NAME || 'My shop', ownerPasswordChangedAt: new Date() });
+    const owner = await User.create({
+      shop: shop._id,
       name: process.env.SEED_OWNER_NAME || 'Owner',
       username: process.env.SEED_OWNER_USERNAME || 'owner',
       passwordHash: await bcrypt.hash(process.env.SEED_OWNER_PASSWORD, 12),
       role: 'owner',
     });
-    console.log('[seed] Owner account created. Remove SEED_OWNER_PASSWORD from env vars now.');
+    shop.owner = owner._id;
+    await shop.save();
+    console.log('[seed] Shop and owner account created. Remove SEED_OWNER_PASSWORD from env vars now.');
   }
 }
 

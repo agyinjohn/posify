@@ -40,6 +40,23 @@ cd ../server && NODE_ENV=production npm start
 The server serves the built client, so one Node process serves both the site and the API.
 Put it behind HTTPS (Render, Railway, a VPS with Caddy/Nginx). Set `CLIENT_ORIGIN` to the site URL.
 
+## Multiple shops (clients) and the admin side
+
+One deployment serves many shops. Every record carries its shop's id, and the server adds the signed-in user's shop
+to every database query automatically (`server/src/lib/tenant.js`); anything that runs without a shop is refused
+rather than allowed to touch every shop's data.
+
+- **Admin side:** `https://<your site>/admin`. Create the first admin by setting `ADMIN_USERNAME` and `ADMIN_PASSWORD`
+  on the server and redeploying; sign in, then remove `ADMIN_PASSWORD`.
+- **New client:** *New shop* → shop name, owner's name and username. The owner gets a temporary password, shown on the
+  admin side until the owner signs in and chooses their own (then it is deleted). *Reset owner password* makes a new one.
+- **Suspend / reactivate:** a suspended shop's staff cannot sign in or use the till; nothing is deleted.
+- **Sign-in is automatic:** usernames are unique across all shops, so the username identifies the shop. Each shop's
+  owner creates their own staff as before.
+- **Upgrading an existing single-shop install:** on the first start, all existing data becomes the first shop
+  (named `SHOP_NAME`, default "My shop"; rename it in /admin). Users keep their passwords and receipt numbers continue.
+  Take a database backup first (`server/scripts/backup.sh`).
+
 ## Importing products in bulk
 
 Products page, then **Import**. Download the template, fill it in (one product per row), save it as **CSV** and choose it.

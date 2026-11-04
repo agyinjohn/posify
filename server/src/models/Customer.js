@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantPlugin } from '../lib/tenant.js';
 
 const schema = new mongoose.Schema(
   {
@@ -10,6 +11,8 @@ const schema = new mongoose.Schema(
   { timestamps: true },
 );
 
-schema.index({ name: 1 });
+schema.index({ shop: 1, name: 1 });
+
+schema.plugin(tenantPlugin); // every record belongs to one shop (lib/tenant.js)
 
 export default mongoose.model('Customer', schema);

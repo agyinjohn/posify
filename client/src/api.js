@@ -54,7 +54,11 @@ export async function api(path, opts) {
     throw err;
   }
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+  if (!res.ok) {
+    // The platform admin suspended this shop: every screen stops, the app signs out and says why.
+    if (data?.code === 'SHOP_SUSPENDED' && token) window.dispatchEvent(new CustomEvent('shop:suspended', { detail: data.error }));
+    throw Object.assign(new Error(data?.error || `Request failed (${res.status})`), { status: res.status, code: data?.code });
+  }
   return data;
 }
 

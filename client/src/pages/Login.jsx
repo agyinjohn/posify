@@ -10,7 +10,7 @@ function EyeIcon({ open }) {
 }
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, notice } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -108,6 +108,7 @@ export default function Login() {
               </button>
             </div>
           </div>
+          {!error && notice && <div className="login-error" role="alert">{notice}</div>}
           {error && <div className="login-error" role="alert">{error}</div>}
           <button className="login-btn" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in →'}
