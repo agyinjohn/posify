@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { adminApi, hasAdminToken, setAdminToken } from './adminApi.js';
 import { Field, Modal, useToast } from '../ui.jsx';
 import { dateTime } from '../format.js';
+import { ChevronDown, CircleCheck, CirclePause, Clock, Copy, KeyRound, Lock, LogOut, Pencil, Plus, Search, Store } from 'lucide-react';
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
 
@@ -22,6 +23,15 @@ export default function AdminApp() {
   return <Shops admin={admin} onOut={() => { setAdminToken(''); setAdmin(null); }} />;
 }
 
+const LogoMark = ({ size = 34 }) => (
+  <svg viewBox="0 0 32 32" width={size} height={size} fill="none" aria-hidden="true" className="adm-logo">
+    <rect width="32" height="32" rx="8" fill="#E3A62B" />
+    <rect x="8" y="10" width="16" height="2.5" rx="1.25" fill="#17212B" />
+    <rect x="8" y="15" width="16" height="2.5" rx="1.25" fill="#17212B" />
+    <rect x="8" y="20" width="10" height="2.5" rx="1.25" fill="#17212B" />
+  </svg>
+);
+
 function AdminLogin({ onIn }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -33,41 +43,125 @@ function AdminLogin({ onIn }) {
     catch (err) { setError(err.message); setBusy(false); }
   };
   return (
-    <div className="force-pw">
-      <form className="force-pw-card" onSubmit={submit}>
-        <h1>Posify admin</h1>
-        <h2>Sign in to manage shops</h2>
-        <Field label="Username"><input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoFocus /></Field>
-        <Field label="Password"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></Field>
-        {error && <div className="error">{error}</div>}
-        <div className="actions"><button className="primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button></div>
+    <div className="adm-auth">
+      <form className="login-card adm-auth-card" onSubmit={submit}>
+        <div className="adm-auth-brand"><LogoMark size={44} /><div><strong>Posify</strong><span>Admin console</span></div></div>
+        <div className="login-card-header">
+          <h2>Welcome back</h2>
+          <p>Sign in to manage your client shops</p>
+        </div>
+        <label className="login-field"><span>Username</span>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoFocus placeholder="admin username" />
+        </label>
+        <label className="login-field"><span>Password</span>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required placeholder="••••••••" />
+        </label>
+        {error && <div className="login-error" role="alert">{error}</div>}
+        <button className="login-btn" disabled={busy}>{busy ? 'Signing in…' : 'Sign in →'}</button>
+        <p className="adm-auth-foot"><Lock size={13} aria-hidden="true" /> Platform administrators only</p>
       </form>
     </div>
   );
 }
 
-function CopyText({ text, label = 'Copy' }) {
+function CopyText({ text, label = 'Copy', icon = true }) {
   const toast = useToast();
   return (
-    <button type="button" className="ghost-btn" onClick={async () => {
+    <button type="button" className={`adm-copy${label ? '' : ' icon-only'}`} title={label || 'Copy'} aria-label={label || 'Copy'} onClick={async () => {
       try { await navigator.clipboard.writeText(text); toast('Copied'); } catch { toast('Copy failed. Select the text and copy it by hand', 'err'); }
-    }}>{label}</button>
+    }}>{icon && <Copy size={14} aria-hidden="true" />}{label}</button>
   );
 }
 
 // Username + temporary password to hand to a shop owner. Shown until the owner signs in and chooses their own.
 function Credentials({ shop }) {
-  if (!shop.owner) return <span className="muted-cell">No owner account</span>;
+  if (!shop.owner) return <p className="adm-muted">No owner account</p>;
   return (
-    <div className="admin-cred">
-      <div><span>Username</span><code>{shop.owner.username}</code></div>
+    <div className="adm-cred">
+      <div className="adm-cred-row">
+        <span>Username</span><code>{shop.owner.username}</code><CopyText text={shop.owner.username} label="" />
+      </div>
       {shop.tempPassword ? (
         <>
-          <div><span>Temporary password</span><code>{shop.tempPassword}</code><CopyText text={`Shop: ${shop.name}\nUsername: ${shop.owner.username}\nTemporary password: ${shop.tempPassword}`} label="Copy both" /></div>
-          <small>Shown until the owner signs in and sets their own password.</small>
+          <div className="adm-cred-row">
+            <span>Temporary password</span><code>{shop.tempPassword}</code><CopyText text={shop.tempPassword} label="" />
+          </div>
+          <div className="adm-cred-foot pending">
+            <Clock size={14} aria-hidden="true" /><span>Waiting for the owner to sign in and set their own password</span>
+            <CopyText text={`Shop: ${shop.name}\nUsername: ${shop.owner.username}\nTemporary password: ${shop.tempPassword}`} label="Copy both" icon={false} />
+          </div>
         </>
       ) : (
-        <small>Owner set their own password{shop.ownerPasswordChangedAt ? ` on ${dateTime(shop.ownerPasswordChangedAt)}` : ''}. It is not visible here.</small>
+        <div className="adm-cred-foot done">
+          <CircleCheck size={14} aria-hidden="true" /><span>Owner uses their own password{shop.ownerPasswordChangedAt ? ` · since ${dateTime(shop.ownerPasswordChangedAt)}` : ''}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Soft, readable avatar colours (identity only), picked from the shop name so a shop keeps its colour.
+const AVATARS = ['#2D3F8F', '#1E7B50', '#B45309', '#7C3AED', '#0E7490', '#BE185D'];
+const avatarColor = (name) => AVATARS[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 9973, 7) % AVATARS.length];
+const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
+
+const FILTERS = [
+  ['all', 'All', Store],
+  ['active', 'Active', CircleCheck],
+  ['suspended', 'Suspended', CirclePause],
+  ['waiting', 'Waiting for owner', Clock],
+];
+const matches = (s, f) => f === 'all' || (f === 'active' && s.active) || (f === 'suspended' && !s.active) || (f === 'waiting' && Boolean(s.tempPassword));
+
+function ShopCard({ shop, onRename, onReset, onToggle }) {
+  return (
+    <article className={`adm-card${shop.active ? '' : ' off'}`}>
+      <header>
+        <span className="adm-avatar" style={{ background: avatarColor(shop.name) }}>{initials(shop.name)}</span>
+        <div className="adm-card-title">
+          <h3>{shop.name}</h3>
+          <p>{shop.owner ? shop.owner.name : 'No owner'}</p>
+        </div>
+        <span className={`adm-pill ${shop.active ? 'on' : 'off'}`}>{shop.active ? 'Active' : 'Suspended'}</span>
+      </header>
+      <Credentials shop={shop} />
+      {shop.notes && <p className="adm-notes">{shop.notes}</p>}
+      <footer>
+        <span className="adm-muted">Created {dateTime(shop.createdAt)}</span>
+        <div className="adm-actions">
+          <button type="button" onClick={onRename}><Pencil size={14} aria-hidden="true" /> Edit</button>
+          <button type="button" onClick={onReset}><KeyRound size={14} aria-hidden="true" /> Reset password</button>
+          {shop.active
+            ? <button type="button" className="danger" onClick={onToggle}><CirclePause size={14} aria-hidden="true" /> Suspend</button>
+            : <button type="button" className="primary" onClick={onToggle}><CircleCheck size={14} aria-hidden="true" /> Reactivate</button>}
+        </div>
+      </footer>
+    </article>
+  );
+}
+
+function AdminMenu({ admin, onPassword, onOut }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="adm-menu">
+      <button type="button" className="adm-me" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className="adm-me-avatar">{initials(admin.name)}</span>
+        <span className="adm-me-name">{admin.name}</span>
+        <ChevronDown size={15} aria-hidden="true" />
+      </button>
+      {open && (
+        <>
+          <div className="topbar-backdrop" onClick={() => setOpen(false)} />
+          <div className="topbar-dropdown">
+            <div className="topbar-dropdown-user">
+              <span className="adm-me-avatar lg">{initials(admin.name)}</span>
+              <div><div className="topbar-dropdown-name">{admin.name}</div><div className="topbar-dropdown-role">@{admin.username} · Platform admin</div></div>
+            </div>
+            <hr className="topbar-dropdown-divider" />
+            <button className="topbar-dropdown-item" onClick={() => { setOpen(false); onPassword(); }}><KeyRound size={14} aria-hidden="true" /> Change password</button>
+            <button className="topbar-dropdown-signout" onClick={() => { setOpen(false); onOut(); }}><LogOut size={14} aria-hidden="true" /> Sign out</button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -80,6 +174,7 @@ function Shops({ admin, onOut }) {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null); // { shop, action: 'suspend' | 'reactivate' | 'reset' }
   const [q, setQ] = useState('');
+  const [filter, setFilter] = useState('all');
   const [pw, setPw] = useState(false);
 
   const load = useCallback(() => adminApi('/shops').then(setShops).catch((e) => toast(e.message, 'err')), [toast]);
@@ -98,50 +193,57 @@ function Shops({ admin, onOut }) {
     } catch (e) { toast(e.message, 'err'); }
   };
 
-  const shown = (shops || []).filter((s) => !q || `${s.name} ${s.owner?.username ?? ''} ${s.owner?.name ?? ''}`.toLowerCase().includes(q.toLowerCase()));
-  const activeCount = (shops || []).filter((s) => s.active).length;
+  const list = shops || [];
+  const counts = Object.fromEntries(FILTERS.map(([k]) => [k, list.filter((s) => matches(s, k)).length]));
+  const shown = list.filter((s) => matches(s, filter) && (!q || `${s.name} ${s.owner?.username ?? ''} ${s.owner?.name ?? ''}`.toLowerCase().includes(q.toLowerCase())));
 
   return (
-    <div className="admin">
-      <header className="admin-top">
-        <strong>Posify admin</strong>
-        <span className="admin-who">{admin.name}</span>
-        <button className="ghost" onClick={() => setPw(true)}>Change password</button>
-        <button className="ghost" onClick={onOut}>Sign out</button>
+    <div className="adm">
+      <header className="adm-head">
+        <div className="adm-brand"><LogoMark /><strong>Posify</strong><span className="adm-tag">Admin</span></div>
+        <AdminMenu admin={admin} onPassword={() => setPw(true)} onOut={onOut} />
       </header>
-      <main className="page">
-        <div className="page-toolbar">
-          <div className="page-toolbar-left">
-            <input className="search" placeholder="Search shops or owners" value={q} onChange={(e) => setQ(e.target.value)} />
-            {shops && <span className="chip">{shops.length} shop{shops.length !== 1 ? 's' : ''} · {activeCount} active</span>}
+
+      <main className="adm-main">
+        <section className="adm-hero">
+          <div>
+            <h1>Client shops</h1>
+            <p>Create shops, hand owners their first sign-in, and switch shops off or on.</p>
           </div>
-          <button className="primary" onClick={() => setCreating(true)}>New shop</button>
+          <button className="primary adm-new" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> New shop</button>
+        </section>
+
+        <section className="adm-stats" aria-label="Summary">
+          {FILTERS.map(([k, label, Icon]) => (
+            <button key={k} type="button" className={`adm-stat s-${k}${filter === k ? ' on' : ''}`} onClick={() => setFilter(k)} aria-pressed={filter === k}>
+              <span className="adm-stat-icon"><Icon size={18} aria-hidden="true" /></span>
+              <span className="adm-stat-label">{k === 'all' ? 'Total shops' : label}</span>
+              <strong>{shops ? counts[k] : '–'}</strong>
+            </button>
+          ))}
+        </section>
+
+        <div className="adm-search">
+          <Search size={16} aria-hidden="true" />
+          <input placeholder="Search by shop, owner or username" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search shops" />
         </div>
-        {shops === null ? <p className="hint">Loading shops…</p> : (
-          <div className="tablewrap">
-            <table>
-              <thead><tr><th>Shop</th><th>Status</th><th>Owner sign-in</th><th>Created</th><th /></tr></thead>
-              <tbody>
-                {shown.map((s) => (
-                  <tr key={s.id}>
-                    <td><strong>{s.name}</strong>{s.owner && <><br /><small className="muted-cell">{s.owner.name}</small></>}</td>
-                    <td><span className={`badge ${s.active ? 'badge-green' : 'badge-red'}`}>{s.active ? 'Active' : 'Suspended'}</span></td>
-                    <td><Credentials shop={s} /></td>
-                    <td className="muted-cell">{dateTime(s.createdAt)}</td>
-                    <td className="acts">
-                      <button onClick={() => setEditing(s)}>Rename</button>
-                      <button onClick={() => setConfirm({ shop: s, action: 'reset' })}>Reset owner password</button>
-                      {s.active
-                        ? <button className="danger" onClick={() => setConfirm({ shop: s, action: 'suspend' })}>Suspend</button>
-                        : <button onClick={() => setConfirm({ shop: s, action: 'reactivate' })}>Reactivate</button>}
-                    </td>
-                  </tr>
-                ))}
-                {shown.length === 0 && <tr><td colSpan={5} className="empty">{shops.length ? 'No shop matches.' : 'No shops yet. Create the first one.'}</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        )}
+
+        {shops === null ? <div className="adm-grid">{[0, 1, 2].map((i) => <div key={i} className="adm-card skel-card"><span className="skel" style={{ width: '60%' }} /><span className="skel" style={{ width: '90%', marginTop: '1rem' }} /><span className="skel" style={{ width: '40%', marginTop: '.6rem' }} /></div>)}</div>
+          : shown.length === 0 ? (
+            <div className="adm-empty">
+              <Store size={34} aria-hidden="true" />
+              <h3>{list.length ? 'No shops match' : 'No shops yet'}</h3>
+              <p>{list.length ? 'Try another search or filter.' : 'Create your first client shop to get started.'}</p>
+              {!list.length && <button className="primary" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> New shop</button>}
+            </div>
+          ) : (
+            <div className="adm-grid">
+              {shown.map((s) => (
+                <ShopCard key={s.id} shop={s} onRename={() => setEditing(s)} onReset={() => setConfirm({ shop: s, action: 'reset' })}
+                  onToggle={() => setConfirm({ shop: s, action: s.active ? 'suspend' : 'reactivate' })} />
+              ))}
+            </div>
+          )}
       </main>
 
       {creating && <NewShop onClose={() => setCreating(false)} onCreated={(s) => setShops((l) => [s, ...(l || [])])} />}
@@ -184,7 +286,7 @@ function NewShop({ onClose, onCreated }) {
   if (created) {
     return (
       <Modal title={`${created.name} is ready`} onClose={onClose}>
-        <p>Give these to {created.owner.name}. They sign in at the shop's normal web address and will be asked to choose their own password.</p>
+        <div className="adm-created"><CircleCheck size={28} aria-hidden="true" /><p>Give these to <strong>{created.owner.name}</strong>. They sign in at the shop's normal web address and will be asked to choose their own password.</p></div>
         <Credentials shop={created} />
         <div className="actions"><button className="primary" onClick={onClose}>Done</button></div>
       </Modal>
