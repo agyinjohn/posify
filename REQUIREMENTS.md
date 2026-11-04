@@ -62,6 +62,7 @@ Update the boxes as you test and deliver.
 - [~] Daily summary: sales count, total, profit, discounts, credit given, debts collected, money received per payment method
 - [~] Sales by product over a date range (quantity, revenue, profit)
 - [~] Stock list with value at cost; download as CSV for Excel
+- [~] Reports overview with charts (MUI X Charts): revenue and profit by day, busiest hours, weekdays, money by payment method, best sellers and most profitable products, categories, retail vs wholesale, cashiers, stock that did not sell; preset or custom period, compared with the previous period
 
 ## 6. Platform
 - [x] React client builds for production

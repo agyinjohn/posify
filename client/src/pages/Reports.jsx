@@ -3,11 +3,12 @@ import { api, download } from '../api.js';
 import { cacheGet, swrFetch } from '../cache.js';
 import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { fmt, qtyFmt, todayStr } from '../format.js';
+import Overview from './ReportsOverview.jsx';
 
-const TABS = [['daily', 'Daily summary'], ['product', 'Sales by product'], ['stock', 'Stock list']];
+const TABS = [['overview', 'Overview'], ['daily', 'Daily summary'], ['product', 'Sales by product'], ['stock', 'Stock list']];
 
 export default function Reports() {
-  const [tab, setTab] = useState('daily');
+  const [tab, setTab] = useState('overview');
   return (
     <div className="page">
       <div className="tab-bar">
@@ -15,6 +16,7 @@ export default function Reports() {
           <button key={k} className={`tab-btn${tab === k ? ' active' : ''}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
+      {tab === 'overview' && <Overview />}
       {tab === 'daily' && <Daily />}
       {tab === 'product' && <ByProduct />}
       {tab === 'stock' && <StockList />}

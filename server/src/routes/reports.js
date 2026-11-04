@@ -9,6 +9,8 @@ import { asyncHandler } from '../lib/asyncHandler.js';
 import { dayRange } from '../lib/validate.js';
 import { PAYMENT_METHODS, r2 } from '../lib/money.js';
 import { toCsv } from '../lib/csv.js';
+import User from '../models/User.js';
+import { buildOverview, previousRange } from '../lib/analytics.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
@@ -87,6 +89,25 @@ router.get('/stock', asyncHandler(async (req, res) => {
     ));
   }
   res.json({ totalValue: r2(rows.reduce((s, r) => s + r.value, 0)), rows });
+}));
+
+// Overview for a date range: totals vs the previous period of the same length, trends by day / hour / weekday,
+// payment methods, best products, categories, cashiers, retail vs wholesale, and stock that did not sell.
+const SALE_FIELDS = 'createdAt status mode total subtotal orderDiscount discountTotal balance creditReturned refundedTotal payments cashier items.product items.name items.sku items.qty items.returnedQty items.lineTotal items.costPrice';
+router.get('/overview', asyncHandler(async (req, res) => {
+  const { start, end, from, to } = dayRange(req.query.from, req.query.to);
+  const prev = previousRange(from, to);
+  const prevStart = new Date(`${prev.from}T00:00:00.000Z`);
+  const [allSales, refunds, custPayments, products, users] = await Promise.all([
+    Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(SALE_FIELDS).lean(),
+    Refund.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
+    CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
+    Product.find({}).select('name sku category stock costPrice active').lean(),
+    User.find({}).select('name').lean(),
+  ]);
+  const sales = allSales.filter((s) => s.createdAt >= start);
+  const prevSales = allSales.filter((s) => s.createdAt < start);
+  res.json({ ...buildOverview({ sales, prevSales, refunds, custPayments, products, users, from, to }), previousRange: prev });
 }));
 
 export default router;

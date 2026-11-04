@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
 import Login from './pages/Login.jsx';
@@ -9,7 +9,8 @@ import Sales from './pages/Sales.jsx';
 import Customers from './pages/Customers.jsx';
 import Products from './pages/Products.jsx';
 import Stock from './pages/Stock.jsx';
-import Reports from './pages/Reports.jsx';
+// Reports carries the chart library, so it loads on its own; owners fetch it in the background (see prefetch.js).
+const Reports = lazy(() => import('./pages/Reports.jsx'));
 import Users from './pages/Users.jsx';
 import AuditLog from './pages/AuditLog.jsx';
 import Shifts from './pages/Shifts.jsx';
@@ -17,6 +18,7 @@ import Suppliers from './pages/Suppliers.jsx';
 import { QueueBadge, QueuePanel } from './pages/OfflineQueue.jsx';
 import { SHOP_NAME } from './format.js';
 import { useOfflineSync } from './offlineSync.js';
+import { TableSkeleton } from './ui.jsx';
 import { startPrefetch, warmRoute } from './prefetch.js';
 import {
   ShoppingCart, Receipt, Users as UsersIcon, Package, BarChart2,
@@ -177,7 +179,7 @@ export default function App() {
             <Route path="/products" element={owner(<Products />)} />
             <Route path="/stock" element={owner(<Stock />)} />
             <Route path="/suppliers" element={owner(<Suppliers />)} />
-            <Route path="/reports" element={owner(<Reports />)} />
+            <Route path="/reports" element={owner(<Suspense fallback={<div className="page"><TableSkeleton cols={4} rows={6} /></div>}><Reports /></Suspense>)} />
             <Route path="/shifts" element={owner(<Shifts />)} />
             <Route path="/users" element={owner(<Users />)} />
             <Route path="/audit" element={owner(<AuditLog />)} />
