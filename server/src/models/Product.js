@@ -10,6 +10,9 @@ const productSchema = new mongoose.Schema(
     retailPrice: { type: Number, required: true, min: 0 },
     // 0 means "no wholesale price set": wholesale sales fall back to retail
     wholesalePrice: { type: Number, min: 0, default: 0 },
+    // Optional price for a whole pack (carton/box) when it is not simply pieces x the piece price. 0 = not set.
+    packRetailPrice: { type: Number, min: 0, default: 0 },
+    packWholesalePrice: { type: Number, min: 0, default: 0 },
     stock: { type: Number, default: 0, min: 0 },
     reorderLevel: { type: Number, default: 0, min: 0 },
     // Unit conversion: 1 means no pack (sold by piece only).

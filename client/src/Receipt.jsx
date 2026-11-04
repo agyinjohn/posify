@@ -1,10 +1,15 @@
 import { dateTime, fmt, qtyFmt, SHOP_NAME } from './format.js';
 
-// "2 ctn + 3 pcs (27 pcs)" when a product was sold as packs and loose pieces together.
-const qtyLabel = (it) => {
-  if (!it.packQty) return qtyFmt(it.qty);
-  const loose = it.loosePcs ? ` + ${qtyFmt(it.loosePcs)} pcs` : '';
-  return `${qtyFmt(it.packQty)} ${it.packLabel}${loose} (${qtyFmt(it.qty)} pcs)`;
+// Quantity and price for a line, e.g. "2 ctn × GH₵120.00 + 3 pcs × GH₵12.00 (27 pcs)". Packs and loose pieces can
+// have different prices. Sales from before pack prices were stored have no packPrice and keep the older wording.
+const priceLabel = (it) => {
+  if (!it.packQty) return `${qtyFmt(it.qty)} × ${fmt(it.unitPrice)}`;
+  if (it.packPrice == null) {
+    const loose = it.loosePcs ? ` + ${qtyFmt(it.loosePcs)} pcs` : '';
+    return `${qtyFmt(it.packQty)} ${it.packLabel}${loose} (${qtyFmt(it.qty)} pcs) × ${fmt(it.unitPrice)}`;
+  }
+  const loose = it.loosePcs ? ` + ${qtyFmt(it.loosePcs)} pcs × ${fmt(it.unitPrice)}` : '';
+  return `${qtyFmt(it.packQty)} ${it.packLabel} × ${fmt(it.packPrice)}${loose} (${qtyFmt(it.qty)} pcs)`;
 };
 
 export default function Receipt({ sale }) {
@@ -20,7 +25,7 @@ export default function Receipt({ sale }) {
         <tbody>
           {sale.items.map((it, i) => (
             <tr key={i}>
-              <td>{it.name}<br /><small>{qtyLabel(it)} × {fmt(it.unitPrice)}{it.discount ? ` (−${fmt(it.discount)})` : ''}</small></td>
+              <td>{it.name}<br /><small>{priceLabel(it)}{it.discount ? ` (−${fmt(it.discount)})` : ''}</small></td>
               <td className="num">{fmt(it.lineTotal)}</td>
             </tr>
           ))}

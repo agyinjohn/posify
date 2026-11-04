@@ -40,6 +40,15 @@ cd ../server && NODE_ENV=production npm start
 The server serves the built client, so one Node process serves both the site and the API.
 Put it behind HTTPS (Render, Railway, a VPS with Caddy/Nginx). Set `CLIENT_ORIGIN` to the site URL.
 
+## Importing products in bulk
+
+Products page, then **Import**. Download the template, fill it in (one product per row), save it as **CSV** and choose it.
+- Column titles are matched loosely: `Cost per carton`, `cost_per_ctn` and `Carton cost` all work. Unknown columns are listed and ignored.
+- Prices follow the product form: give per-piece and/or per-carton prices; an empty one is worked out from the other (needs `pieces per pack`).
+- Nothing is saved until you press Import: first every row is checked and you see what will be added, updated, skipped or needs fixing.
+- Same SKU already in the shop: skip it, or update its details and prices (stock is never changed by an update). No SKU: one is made from the barcode or the name.
+- Opening stock (in pieces or in packs) is recorded as an opening stock movement. Up to 2000 rows per file.
+
 ## Passwords
 
 - **Change your own:** profile menu (top right), then *Change password*. Every other device you were signed in on is signed out.

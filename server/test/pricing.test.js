@@ -136,3 +136,59 @@ test('pack-only and piece-only lines have no spurious loose pieces', () => {
   assert.equal(pcsOnly.packQty, null);
   assert.equal(pcsOnly.loosePcs, null);
 });
+
+// ── pack (carton/box) prices ────────────────────────────────────────────────
+import { packSpecificPrice, packPriceFor, pieceUnitPrice } from '../src/lib/unitPrices.js';
+const carton = (over = {}) => mk({ unitsPerPack: 12, packLabel: 'ctn', retailPrice: 12, wholesalePrice: 0, ...over });
+
+test('a pack can have its own price, cheaper than the pieces added up', () => {
+  const p = carton({ packRetailPrice: 120 });
+  const one = priceSale({ lines: [{ productId: 'p1', qty: 1, unit: 'pack' }], productsById: map(p), mode: 'retail' });
+  assert.equal(one.total, 120);                       // not 12 x 12 = 144
+  assert.equal(one.items[0].packPrice, 120);
+  assert.equal(one.items[0].qty, 12);                 // stock still moves in pieces
+  const loose = priceSale({ lines: [{ productId: 'p1', qty: 12 }], productsById: map(p), mode: 'retail' });
+  assert.equal(loose.total, 144);                     // 12 single pieces at the piece price
+});
+
+test('packs and loose pieces of one product are each charged their own price', () => {
+  const p = carton({ packRetailPrice: 120 });
+  const r = priceSale({ lines: [{ productId: 'p1', qty: 2, unit: 'pack' }, { productId: 'p1', qty: 3 }], productsById: map(p), mode: 'retail' });
+  assert.equal(r.total, 276);                         // 2 x 120 + 3 x 12
+  const it = r.items[0];
+  assert.deepEqual([it.qty, it.packQty, it.loosePcs, it.unitPrice, it.packPrice], [27, 2, 3, 12, 120]);
+});
+
+test('without a pack price a pack is just pieces x the piece price', () => {
+  const p = carton();
+  const r = priceSale({ lines: [{ productId: 'p1', qty: 1, unit: 'pack' }], productsById: map(p), mode: 'retail' });
+  assert.equal(r.total, 144);
+  assert.equal(r.items[0].packPrice, 144);
+  assert.equal(packSpecificPrice(p, 'retail'), null);
+});
+
+test('wholesale: own pack price, else wholesale piece price x pieces, else the retail pack price', () => {
+  const sale = (p) => priceSale({ lines: [{ productId: 'p1', qty: 1, unit: 'pack' }], productsById: map(p), mode: 'wholesale' }).total;
+  assert.equal(sale(carton({ packRetailPrice: 120, packWholesalePrice: 100 })), 100);
+  assert.equal(sale(carton({ packRetailPrice: 120, wholesalePrice: 9 })), 108);    // 9 x 12, not the retail carton price
+  assert.equal(sale(carton({ packRetailPrice: 120 })), 120);                        // no wholesale at all: retail carton price
+  assert.equal(sale(carton()), 144);
+  // and by the piece, wholesale still falls back to retail
+  assert.equal(pieceUnitPrice(carton({ wholesalePrice: 9 }), 'wholesale'), 9);
+  assert.equal(pieceUnitPrice(carton(), 'wholesale'), 12);
+});
+
+test('a product with no pack size ignores any pack price', () => {
+  const p = mk({ unitsPerPack: 1, packRetailPrice: 5 });
+  assert.equal(packSpecificPrice(p, 'retail'), null);
+  assert.equal(priceSale({ lines: [{ productId: 'p1', qty: 2 }], productsById: map(p), mode: 'retail' }).total, 120);
+  assert.equal(packPriceFor(carton({ packRetailPrice: 120 }), 'retail'), 120);
+  assert.equal(packPriceFor(carton(), 'retail'), 144);
+});
+
+test('discounts apply to the combined line', () => {
+  const p = carton({ packRetailPrice: 120 });
+  const r = priceSale({ lines: [{ productId: 'p1', qty: 1, unit: 'pack', discount: 20 }], productsById: map(p), mode: 'retail' });
+  assert.equal(r.total, 100);
+  assert.equal(r.discountTotal, 20);
+});

@@ -6,7 +6,7 @@ import { Field, Modal, useToast } from '../ui.jsx';
 import Receipt from '../Receipt.jsx';
 import { dateTime, fmt, METHODS, newId, qtyFmt, r2 } from '../format.js';
 import { cacheProducts, getCachedProducts } from '../offlineDb.js';
-import { packName, unitsOf } from '../bulk.js';
+import { lineGross, packName, packPriceFor, pieceUnitPrice, unitsOf } from '../bulk.js';
 import { useOfflineSync } from '../offlineSync.js';
 import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
 
@@ -65,7 +65,7 @@ export default function Sell() {
   useEffect(() => { load(); loadShift(); loadHeldCount(); searchRef.current?.focus(); }, [load, loadShift, loadHeldCount]);
 
   const byId = useMemo(() => new Map(products.map((p) => [p._id, p])), [products]);
-  const priceOf = useCallback((p) => (mode === 'wholesale' && p.wholesalePrice > 0 ? p.wholesalePrice : p.retailPrice), [mode]);
+  const priceOf = useCallback((p) => pieceUnitPrice(p, mode), [mode]);
 
   const search = useDeferredValue(q); // typing stays instant while a big catalogue is filtered
   const results = useMemo(() => {
@@ -79,9 +79,9 @@ export default function Sell() {
     const hasPack = p.unitsPerPack > 1;
     const unit = c.unit || 'piece';
     const pieceQty = (unit === 'pack' && hasPack) ? r2(c.qty * p.unitsPerPack) : c.qty;
-    const gross = r2(priceOf(p) * pieceQty);
+    const gross = lineGross(p, mode, unit, c.qty); // a carton can have its own price, not just pieces x piece price
     const discount = Math.min(Math.max(Number(c.discount) || 0, 0), gross);
-    return { ...c, p, unit, hasPack, pieceQty, price: priceOf(p), gross, discount, total: r2(gross - discount) };
+    return { ...c, p, unit, hasPack, pieceQty, price: priceOf(p), packPrice: hasPack ? packPriceFor(p, mode) : null, gross, discount, total: r2(gross - discount) };
   });
   const subtotal = r2(lines.reduce((s, l) => s + l.total, 0));
   const od = Math.min(Math.max(Number(orderDiscount) || 0, 0), subtotal);
@@ -216,7 +216,7 @@ export default function Sell() {
                   </span>
                   <span className="price">
                     {p.unitsPerPack > 1 && p.stock >= p.unitsPerPack
-                      ? <>{fmt(priceOf(p) * unitsOf(p))}<small> / {packName(p)}</small></>
+                      ? <>{fmt(packPriceFor(p, mode))}<small> / {packName(p)}</small></>
                       : fmt(priceOf(p))}
                   </span>
                 </span>
@@ -275,7 +275,7 @@ export default function Sell() {
                   type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
                   onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, maxQty(l.p, l.unit)) })}
                 />
-                <span className="line-meta">{l.hasPack && l.unit === 'pack' ? `${fmt(l.price * l.p.unitsPerPack)} / ${packName(l.p)}` : fmt(l.price)} × {l.qty}</span>
+                <span className="line-meta">{l.hasPack && l.unit === 'pack' ? `${fmt(l.packPrice)} / ${packName(l.p)}` : fmt(l.price)} × {l.qty}</span>
                 <strong className="line-total">{fmt(l.total)}</strong>
               </div>
               {l.hasPack && l.unit === 'pack' && (

@@ -8,6 +8,7 @@ const itemSchema = new mongoose.Schema(
     sku: String,
     qty: Number,
     unitPrice: Number,
+    packPrice: { type: Number, default: null }, // price per pack as charged, when the line includes packs
     costPrice: Number, // snapshot, so profit stays correct after cost changes
     discount: Number,
     lineTotal: Number,

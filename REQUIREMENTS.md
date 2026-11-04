@@ -36,6 +36,8 @@ Update the boxes as you test and deliver.
 - [~] Low-stock and out-of-stock indicators
 - [~] Product images on Cloudinary (optional; needs keys in `server/.env`)
 - [~] Sell by carton and by piece (unit conversion)
+- [~] Carton/box and piece prices: enter the cost and selling price per piece, per carton, or both; an empty one is worked out from the other; a carton price is kept as its own price (cartons can be cheaper than the pieces added up); wholesale falls back to retail
+- [~] Bulk product import from CSV: template, loose column matching, per-row check before saving, skip or update existing SKUs, opening stock movements
 - [~] Stock take (physical count with variance report)
 - [~] Suppliers and purchase orders
 

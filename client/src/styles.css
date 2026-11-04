@@ -1054,3 +1054,19 @@ img, video { max-width: 100%; }
 @media (max-width: 400px) { .recovery-sheet ol { grid-template-columns: 1fr; } }
 
 @media print { .recovery-sheet ol { grid-template-columns: 1fr; } .recovery-sheet { border: 0; } }
+
+.bulk-explain { background: var(--paper); border-radius: 8px; padding: .6rem .8rem; margin: 0 0 .9rem; }
+.stock-unit { margin-top: .4rem; }
+
+/* Product import */
+.toolbar-buttons { display: flex; gap: .5rem; flex-wrap: wrap; }
+.import-actions { margin: .2rem 0 .8rem; }
+.import-mode { border: 1px solid var(--line); border-radius: 8px; padding: .5rem .8rem .3rem; margin: .4rem 0 .8rem; }
+.import-mode legend { font-weight: 600; font-size: .9rem; padding: 0 .3rem; }
+.import-mode .check { white-space: normal; min-height: 2.2rem; }
+.import-mode input[type=radio] { width: 18px; height: 18px; min-height: 0; }
+.chips-row { display: flex; gap: .4rem; flex-wrap: wrap; margin: .6rem 0; }
+.import-msg { font-size: .8rem; color: #92400E; margin-top: .15rem; }
+.import-msg.err { color: var(--red); font-weight: 600; }
+.import-problems { padding-left: 1.1rem; font-size: .88rem; max-height: 220px; overflow-y: auto; }
+@media (max-width: 640px) { .toolbar-buttons { width: 100%; } .toolbar-buttons > button { flex: 1; } .import-actions button { width: 100%; } }

@@ -1,4 +1,5 @@
 import { r2, r3, PAYMENT_METHODS } from './money.js';
+import { pieceUnitPrice, packSpecificPrice, packPriceFor } from './unitPrices.js';
 
 export class SaleError extends Error {
   constructor(message, status = 400) {
@@ -29,8 +30,17 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
     const isPack = l.unit === 'pack' && unitsPerPack > 1;
     const qty = isPack ? r3(rawQty * unitsPerPack) : r3(rawQty);
     const disc = Math.max(0, Number(l.discount) || 0);
-    const prev = merged.get(key) || { qty: 0, discount: 0, packQty: 0, loosePcs: 0, isPack: false };
+    // Price this line now: packs use the pack price when the product has one, pieces use the piece price.
+    // (Packs and loose pieces of one product can therefore carry different prices on the same sale.)
+    let lineGross = 0;
+    if (p) {
+      const piecePrice = pieceUnitPrice(p, mode);
+      const packPrice = isPack ? packSpecificPrice(p, mode) : null;
+      lineGross = packPrice !== null ? r2(packPrice * rawQty) : r2(piecePrice * qty);
+    }
+    const prev = merged.get(key) || { qty: 0, discount: 0, packQty: 0, loosePcs: 0, isPack: false, gross: 0 };
     merged.set(key, {
+      gross: r2(prev.gross + lineGross),
       qty: r3(prev.qty + qty),
       discount: r2(prev.discount + disc),
       // Receipt breakdown: packs and loose pieces of the same product are kept apart,
@@ -49,8 +59,8 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
   for (const [key, line] of merged) {
     const p = productsById.get(key);
     if (!p || p.active === false) throw new SaleError('A product in the cart is no longer available', 404);
-    const unitPrice = mode === 'wholesale' && p.wholesalePrice > 0 ? p.wholesalePrice : p.retailPrice;
-    const gross = r2(unitPrice * line.qty);
+    const unitPrice = pieceUnitPrice(p, mode);
+    const gross = line.gross;
     const discount = r2(Math.min(line.discount, gross));
     const lineTotal = r2(gross - discount);
     grossTotal += gross;
@@ -65,7 +75,8 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
       loosePcs: line.isPack && line.loosePcs > 0 ? line.loosePcs : null, // pieces sold alongside the packs
       packLabel: line.isPack ? (p.packLabel || 'pack') : null,
       unitsPerPack: line.isPack ? p.unitsPerPack : null,
-      unitPrice,
+      unitPrice,                                              // per piece (applies to loose pieces)
+      packPrice: line.isPack ? packPriceFor(p, mode) : null,  // per pack, as charged
       costPrice: p.costPrice,
       discount,
       lineTotal,
