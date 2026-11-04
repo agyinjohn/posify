@@ -24,7 +24,7 @@ if (process.env.SEED_OWNER_PASSWORD) {
   }
 }
 
-const server = // OWNER RECOVERY (no terminal needed, e.g. on Render): set RESET_OWNER_PASSWORD on the host and restart.
+// OWNER RECOVERY (no terminal needed, e.g. on Render): set RESET_OWNER_PASSWORD on the host and restart.
 // It is applied once per value; afterwards delete the variable. See README, "Forgot the owner password".
 if (process.env.RESET_OWNER_PASSWORD) {
   try {
@@ -36,7 +36,7 @@ if (process.env.RESET_OWNER_PASSWORD) {
   }
 }
 
-createApp().listen(config.port, () => console.log(`POS server on http://localhost:${config.port}`));
+const server = createApp().listen(config.port, () => console.log(`POS server on http://localhost:${config.port}`));
 
 // Log stray promise errors instead of dying silently, and finish in-flight requests on shutdown.
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection', err));
