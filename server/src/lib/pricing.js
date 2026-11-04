@@ -13,7 +13,9 @@ export class SaleError extends Error {
  * lines: [{ productId, qty, discount }]   productsById: Map<string, product-like>
  */
 export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
-  if (!['retail', 'wholesale'].includes(mode)) throw new SaleError('Invalid sale mode');
+  // mode is still accepted from older tills and queued offline sales, but no longer changes prices:
+  // pieces sell at the piece price and full packs at the pack price (see unitPrices.js).
+  if (mode !== undefined && !['retail', 'wholesale'].includes(mode)) throw new SaleError('Invalid sale mode');
   if (!Array.isArray(lines) || lines.length === 0) throw new SaleError('Cart is empty');
   if (lines.length > 200) throw new SaleError('Too many lines in one sale');
 
@@ -34,8 +36,8 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
     // (Packs and loose pieces of one product can therefore carry different prices on the same sale.)
     let lineGross = 0;
     if (p) {
-      const piecePrice = pieceUnitPrice(p, mode);
-      const packPrice = isPack ? packSpecificPrice(p, mode) : null;
+      const piecePrice = pieceUnitPrice(p);
+      const packPrice = isPack ? packSpecificPrice(p) : null;
       lineGross = packPrice !== null ? r2(packPrice * rawQty) : r2(piecePrice * qty);
     }
     const prev = merged.get(key) || { qty: 0, discount: 0, packQty: 0, loosePcs: 0, isPack: false, gross: 0 };
@@ -59,7 +61,7 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
   for (const [key, line] of merged) {
     const p = productsById.get(key);
     if (!p || p.active === false) throw new SaleError('A product in the cart is no longer available', 404);
-    const unitPrice = pieceUnitPrice(p, mode);
+    const unitPrice = pieceUnitPrice(p);
     const gross = line.gross;
     const discount = r2(Math.min(line.discount, gross));
     const lineTotal = r2(gross - discount);
@@ -76,7 +78,7 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
       packLabel: line.isPack ? (p.packLabel || 'pack') : null,
       unitsPerPack: line.isPack ? p.unitsPerPack : null,
       unitPrice,                                              // per piece (applies to loose pieces)
-      packPrice: line.isPack ? packPriceFor(p, mode) : null,  // per pack, as charged
+      packPrice: line.isPack ? packPriceFor(p) : null,  // per pack, as charged
       costPrice: p.costPrice,
       discount,
       lineTotal,

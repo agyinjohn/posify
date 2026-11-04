@@ -10,6 +10,7 @@ import { fmt, qtyFmt, todayStr } from '../format.js';
 // One-series charts use slot 1 only; revenue and profit (same unit, one axis) use slots 1 and 2.
 const SERIES_1 = '#2a78d6';
 const SERIES_2 = '#eb6834';
+const UNIT = { pieces: { label: 'Single pieces (retail)', color: SERIES_1 }, packs: { label: 'Full packs (wholesale)', color: SERIES_2 } };
 const theme = createTheme({ typography: { fontFamily: "'Public Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" } });
 
 const DAY = 86_400_000;
@@ -102,7 +103,7 @@ export default function Overview() {
     const hi = active.length ? Math.max(...active, 19) : 19;
     return d.byHour.slice(lo, hi + 1);
   }, [d]);
-  const modeTotal = d ? d.modes.reduce((t, m) => t + m.revenue, 0) : 0;
+  const unitTotal = d?.byUnit ? d.byUnit.reduce((t, u) => t + u.revenue, 0) : 0;
 
   return (
     <ThemeProvider theme={theme}>
@@ -212,19 +213,19 @@ export default function Overview() {
               <RankedBars rows={d.categories} />
             </Panel>
 
-            <Panel title="Retail and wholesale">
-              {modeTotal > 0 ? (
+            <Panel title="Single pieces and full packs" sub="Pieces sell at the retail price, full packs at the wholesale price">
+              {unitTotal > 0 ? (
                 <>
-                  <div className="seg-bar" role="img" aria-label={d.modes.map((m) => `${m.mode} ${fmt(m.revenue)}`).join(', ')}>
-                    {d.modes.filter((m) => m.revenue > 0).map((m, i) => (
-                      <div key={m.mode} style={{ flexGrow: m.revenue, background: i === 0 ? SERIES_1 : SERIES_2 }}>
-                        {m.revenue / modeTotal >= 0.12 && <span>{Math.round((m.revenue / modeTotal) * 100)}%</span>}
+                  <div className="seg-bar" role="img" aria-label={d.byUnit.map((u) => `${UNIT[u.unit].label} ${fmt(u.revenue)}`).join(', ')}>
+                    {d.byUnit.filter((u) => u.revenue > 0).map((u) => (
+                      <div key={u.unit} style={{ flexGrow: u.revenue, background: UNIT[u.unit].color }}>
+                        {u.revenue / unitTotal >= 0.12 && <span>{Math.round((u.revenue / unitTotal) * 100)}%</span>}
                       </div>
                     ))}
                   </div>
                   <ul className="seg-legend">
-                    {d.modes.filter((m) => m.revenue > 0).map((m, i) => (
-                      <li key={m.mode}><i style={{ background: i === 0 ? SERIES_1 : SERIES_2 }} /> {m.mode === 'retail' ? 'Retail' : 'Wholesale'} <strong>{fmt(m.revenue)}</strong> <small>{m.sales} sale{m.sales !== 1 ? 's' : ''}</small></li>
+                    {d.byUnit.filter((u) => u.revenue > 0).map((u) => (
+                      <li key={u.unit}><i style={{ background: UNIT[u.unit].color }} /> {UNIT[u.unit].label} <strong>{fmt(u.revenue)}</strong> <small>{qtyFmt(u.qty)} {u.unit === 'packs' ? 'packs' : 'pieces'}</small></li>
                     ))}
                   </ul>
                 </>

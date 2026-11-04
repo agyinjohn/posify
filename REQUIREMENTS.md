@@ -10,8 +10,8 @@ Update the boxes as you test and deliver.
 
 ## 1. Sales and checkout
 - [~] Search products by name or SKU; barcode scanner (types code + Enter) adds to cart
-- [x] Retail or wholesale price per sale; wholesale falls back to retail when no wholesale price is set
-- [~] Switching retail/wholesale in the UI reprices the cart
+- [x] Price follows how the customer buys: single pieces at the piece (retail) price, a full carton/box at the pack (wholesale) price; no pack price = pieces x piece price
+- [~] Switching a cart line between carton and pieces reprices it
 - [~] Quantity per line and a discount on a line or on the whole sale
 - [x] Discounts are clamped; zero or negative totals and bad quantities are rejected
 - [~] Cashiers limited to a maximum discount % (`MAX_CASHIER_DISCOUNT_PCT`); owner can exceed it
@@ -27,7 +27,7 @@ Update the boxes as you test and deliver.
 - [~] Safe to repeat: each sale carries a key, so a lost reply or offline replay never charges twice
 
 ## 2. Products and stock
-- [~] Add, edit and hide products: name, SKU, barcode, category, cost, retail price, wholesale price, reorder level
+- [~] Add, edit and hide products: name, SKU, barcode, category, cost, price per piece, price per pack, reorder level
 - [~] Cashiers never receive cost prices (removed on the server)
 - [~] Opening stock on product creation
 - [~] Stock changes only through recorded movements (sale, void, receipt, adjustment)
@@ -36,7 +36,7 @@ Update the boxes as you test and deliver.
 - [~] Low-stock and out-of-stock indicators
 - [~] Product images on Cloudinary (optional; needs keys in `server/.env`)
 - [~] Sell by carton and by piece (unit conversion)
-- [~] Carton/box and piece prices: enter the cost and selling price per piece, per carton, or both; an empty one is worked out from the other; a carton price is kept as its own price (cartons can be cheaper than the pieces added up); wholesale falls back to retail
+- [~] Carton/box and piece prices: enter the cost and the selling price per piece, per carton, or both; an empty one is worked out from the other; the carton price is the wholesale price (products saved before keep their old wholesale carton price until edited)
 - [~] Bulk product import from CSV: template, loose column matching, per-row check before saving, skip or update existing SKUs, opening stock movements
 - [~] Stock take (physical count with variance report)
 - [~] Suppliers and purchase orders
@@ -62,7 +62,7 @@ Update the boxes as you test and deliver.
 - [~] Daily summary: sales count, total, profit, discounts, credit given, debts collected, money received per payment method
 - [~] Sales by product over a date range (quantity, revenue, profit)
 - [~] Stock list with value at cost; download as CSV for Excel
-- [~] Reports overview with charts (MUI X Charts): revenue and profit by day, busiest hours, weekdays, money by payment method, best sellers and most profitable products, categories, retail vs wholesale, cashiers, stock that did not sell; preset or custom period, compared with the previous period
+- [~] Reports overview with charts (MUI X Charts): revenue and profit by day, busiest hours, weekdays, money by payment method, best sellers and most profitable products, categories, single pieces vs full packs, cashiers, stock that did not sell; preset or custom period, compared with the previous period
 
 ## 6. Platform
 - [x] React client builds for production
@@ -74,8 +74,8 @@ Update the boxes as you test and deliver.
 - [~] Desktop auto-update
 
 ## Manual test script (run before handing over)
-1. Seed the owner, sign in, add 3 products (one with no wholesale price, one with reorder level above its stock).
-2. Sell one in retail and one in wholesale; check the price differs and the wholesale fallback works.
+1. Seed the owner, sign in, add 3 products (one sold in cartons with a carton price, one with reorder level above its stock).
+2. Sell a carton and some single pieces of a pack product; check the carton price and the piece price are used.
 3. Pay with split Cash + MoMo; pay with cash above the total and check change; try MoMo above the total (should be refused).
 4. Sell on credit to a customer; check balance, credit limit refusal, then record a payment.
 5. Try to sell more than the stock (should be refused). Open two browser tabs and sell the last unit in both (only one should succeed).

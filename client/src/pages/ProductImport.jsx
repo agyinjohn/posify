@@ -7,14 +7,13 @@ import { fmt, qtyFmt } from '../format.js';
 
 const TEMPLATE_HEADERS = [
   'name', 'sku', 'barcode', 'category', 'pieces per pack', 'pack name',
-  'cost per piece', 'cost per pack', 'retail price per piece', 'retail price per pack',
-  'wholesale price per piece', 'wholesale price per pack', 'opening stock (pieces)', 'opening stock (packs)', 'reorder level',
+  'cost per piece', 'cost per pack', 'price per piece', 'price per pack', 'opening stock (pieces)', 'opening stock (packs)', 'reorder level',
 ];
-// Three typical shapes: carton prices only, piece and carton prices together (carton cheaper), piece only.
+// Three typical shapes: carton prices only, piece (retail) and carton (wholesale) prices together, piece only.
 const TEMPLATE_ROWS = [
-  ['Frytol Cooking Oil 5L', 'OIL5', '', 'Oils', 12, 'ctn', '', 96, '', 120, '', 108, '', 5, 6],
-  ['Gino Tomato Mix', 'GTM', '6001234567890', 'Provisions', 50, 'carton', 0.9, '', 1, 40, '', '', '', 2, 10],
-  ['Salt 500g', 'SALT', '', 'Provisions', '', '', 1, '', 3, '', '', '', 100, '', 20],
+  ['Frytol Cooking Oil 5L', 'OIL5', '', 'Oils', 12, 'ctn', '', 96, '', 120, '', 5, 6],
+  ['Gino Tomato Mix', 'GTM', '6001234567890', 'Provisions', 50, 'carton', 0.9, '', 1, 40, '', 2, 10],
+  ['Salt 500g', 'SALT', '', 'Provisions', '', '', 1, '', 3, '', 100, '', 20],
 ];
 
 const STATUS = {
@@ -125,7 +124,7 @@ export default function ProductImportModal({ onClose, onDone }) {
       {/* ── Step 1: choose a file ── */}
       <p className="hint">
         Use a spreadsheet with one product per row and column titles in the first row. Save it as <strong>CSV</strong> (in Excel: File → Save As → CSV) and choose it below.
-        Per-piece and per-carton prices can both be given; an empty one is worked out from the other.
+        Single pieces sell at the price per piece (retail) and a full pack at the price per pack (wholesale); give either or both and an empty one is worked out from the other.
       </p>
       <div className="import-actions">
         <button type="button" onClick={() => downloadText('products-template.csv', toCsv([TEMPLATE_HEADERS, ...TEMPLATE_ROWS]))}>Download a template</button>
