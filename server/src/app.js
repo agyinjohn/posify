@@ -33,6 +33,8 @@ export function createApp() {
   }));
   app.use(compression()); // JSON lists (products, sales) shrink about 5x, which is most of the wait on mobile data
   app.use(cors({ origin: config.clientOrigins }));
+  // A product import carries a whole spreadsheet (up to 2000 rows); everything else stays small.
+  app.use('/api/products/import', express.json({ limit: '3mb' }));
   app.use(express.json({ limit: '100kb' }));
   app.use(sanitize);
 

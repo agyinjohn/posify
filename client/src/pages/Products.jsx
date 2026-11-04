@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { CardSkeleton, Field, Modal, RefreshIndicator, useToast } from '../ui.jsx';
 import { fmt, qtyFmt } from '../format.js';
+import ProductImportModal from './ProductImport.jsx';
 import { packName, packPriceFor, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
 
 const blank = { name: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', wholesalePrice: '', packRetailPrice: '', packWholesalePrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
@@ -14,6 +15,7 @@ export default function Products() {
   const [q, setQ] = useState('');
   const [low, setLow] = useState(false);
   const [edit, setEdit] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(() => {
     const key = `/products?all=1&q=${encodeURIComponent(q)}${low ? '&lowStock=1' : ''}`;
@@ -35,7 +37,10 @@ export default function Products() {
           {lowCount > 0 && <span className="chip chip-red">{lowCount} low</span>}
           {list.length > 0 && <span className="chip">{list.length} product{list.length !== 1 ? 's' : ''}</span>}
         </div>
-        <button className="primary" onClick={() => setEdit(blank)}>Add product</button>
+        <div className="toolbar-buttons">
+          <button onClick={() => setImporting(true)}>Import</button>
+          <button className="primary" onClick={() => setEdit(blank)}>Add product</button>
+        </div>
       </div>
 
       <div className="product-grid">
@@ -76,6 +81,7 @@ export default function Products() {
         )}
       </div>
 
+      {importing && <ProductImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
       {edit && <ProductForm p={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
     </div>
   );
