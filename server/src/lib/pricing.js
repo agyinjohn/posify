@@ -1,5 +1,6 @@
 import { r2, r3, PAYMENT_METHODS } from './money.js';
 import { pieceUnitPrice, packSpecificPrice, packPriceFor } from './unitPrices.js';
+import { productLabel } from './productLabel.js';
 
 export class SaleError extends Error {
   constructor(message, status = 400) {
@@ -70,7 +71,7 @@ export function priceSale({ lines, productsById, mode, orderDiscount = 0 }) {
     subtotal += lineTotal;
     items.push({
       product: p._id,
-      name: p.name,
+      name: productLabel(p), // includes the size, e.g. "Super Star (Small)"
       sku: p.sku,
       qty: line.qty,           // always in pieces
       packQty: line.isPack ? line.packQty : null,

@@ -195,3 +195,10 @@ test('discounts apply to the combined line', () => {
   assert.equal(r.total, 100);
   assert.equal(r.discountTotal, 20);
 });
+
+test('a product size is part of the name on the sale (receipt, reports, returns)', () => {
+  const r = priceSale({ lines: [{ productId: 'p1', qty: 1 }], productsById: map(mk({ name: 'Super Star', size: 'Small', wholesalePrice: 0 })), mode: 'retail' });
+  assert.equal(r.items[0].name, 'Super Star (Small)');
+  const plain = priceSale({ lines: [{ productId: 'p1', qty: 1 }], productsById: map(mk({ size: '  ' })), mode: 'retail' });
+  assert.equal(plain.items[0].name, 'Rice 5kg');
+});

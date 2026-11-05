@@ -4,6 +4,9 @@ import { tenantPlugin } from '../lib/tenant.js';
 const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
+    // Optional size label ("Small", "500ml", "XL"): shown after the name, e.g. "Super Star (Small)". Each size is
+    // its own product with its own price and stock; leave empty for products without sizes.
+    size: { type: String, trim: true, maxlength: 30, default: '' },
     sku: { type: String, required: true, trim: true, maxlength: 60 }, // unique within a shop (index below)
     barcode: { type: String, trim: true, maxlength: 60 },
     category: { type: String, trim: true, maxlength: 60, default: 'General' },

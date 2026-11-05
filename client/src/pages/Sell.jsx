@@ -4,7 +4,7 @@ import { cacheGet, cacheInvalidatePrefix, cacheSet } from '../cache.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, useToast } from '../ui.jsx';
 import Receipt from '../Receipt.jsx';
-import { dateTime, fmt, METHODS, newId, qtyFmt, r2 } from '../format.js';
+import { dateTime, fmt, METHODS, newId, productLabel, qtyFmt, r2 } from '../format.js';
 import { cacheProducts, getCachedProducts } from '../offlineDb.js';
 import { lineGross, packName, packPriceFor, pieceUnitPrice, unitsOf } from '../bulk.js';
 import { useOfflineSync } from '../offlineSync.js';
@@ -70,7 +70,7 @@ export default function Sell() {
   const search = useDeferredValue(q); // typing stays instant while a big catalogue is filtered
   const results = useMemo(() => {
     const t = search.trim().toLowerCase();
-    const list = t ? products.filter((p) => [p.name, p.sku, p.barcode].some((v) => v && v.toLowerCase().includes(t))) : products;
+    const list = t ? products.filter((p) => [productLabel(p), p.sku, p.barcode].some((v) => v && v.toLowerCase().includes(t))) : products;
     return list.slice(0, 60);
   }, [products, search]);
 
@@ -88,13 +88,13 @@ export default function Sell() {
   const total = r2(subtotal - od);
 
   const add = (p) => {
-    if (p.stock <= 0) return toast(`${p.name} is out of stock`, 'err');
+    if (p.stock <= 0) return toast(`${productLabel(p)} is out of stock`, 'err');
     setCart((c) => {
       const hit = c.find((l) => l.id === p._id);
       // Sell by the pack only while at least one full pack is in stock.
       const defaultUnit = p.unitsPerPack > 1 && p.stock >= p.unitsPerPack ? 'pack' : 'piece';
       if (!hit) return [...c, { id: p._id, qty: 1, discount: '', unit: defaultUnit }];
-      if (hit.qty + 1 > maxQty(p, hit.unit)) { toast(`Only ${qtyFmt(p.stock)} of ${p.name} in stock`, 'err'); return c; }
+      if (hit.qty + 1 > maxQty(p, hit.unit)) { toast(`Only ${qtyFmt(p.stock)} of ${productLabel(p)} in stock`, 'err'); return c; }
       return c.map((l) => (l.id === p._id ? { ...l, qty: l.qty + 1 } : l));
     });
   };
@@ -199,6 +199,7 @@ export default function Sell() {
                 {p.image?.url && <img className="pcard-img" src={p.image.url} alt="" loading="lazy" decoding="async" />}
                 <span className="pname">
                   {p.name}
+                  {p.size && <span className="size-chip">{p.size}</span>}
                   <small>{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack}/${p.packLabel || 'pack'}` : ''}</small>
                 </span>
                 <span className="pcard-footer">
@@ -252,8 +253,8 @@ export default function Sell() {
           {lines.map((l) => (
             <div className="line" key={l.id}>
               <div className="line-top">
-                <span className="line-name">{l.p.name}</span>
-                <button className="line-remove" onClick={() => remove(l.id)} aria-label={`Remove ${l.p.name}`}>×</button>
+                <span className="line-name">{productLabel(l.p)}</span>
+                <button className="line-remove" onClick={() => remove(l.id)} aria-label={`Remove ${productLabel(l.p)}`}>×</button>
               </div>
               <div className={`line-ctrl${l.hasPack ? ' has-pack' : ''}`}>
                 {l.hasPack && (

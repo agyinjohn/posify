@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { cacheGet, swrFetch } from '../cache.js';
 import { Field, Modal, useToast } from '../ui.jsx';
-import { dateTime, fmt, qtyFmt } from '../format.js';
+import { dateTime, fmt, productLabel, qtyFmt } from '../format.js';
 
 const PO_STATUS_CLASS = { draft: '', ordered: 'badge-amber', received: 'badge-green' };
 const TABS = [['suppliers', 'Suppliers'], ['pos', 'Purchase Orders']];
@@ -219,7 +219,7 @@ function POForm({ onClose, onSaved }) {
                     <td>
                       <select value={l.productId} onChange={(e) => onProductChange(i, e.target.value)} required>
                         <option value="">Choose product</option>
-                        {products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
+                        {products.map((p) => <option key={p._id} value={p._id}>{productLabel(p)} ({p.sku})</option>)}
                       </select>
                     </td>
                     <td><input type="number" min="0.001" step="any" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} required style={{ width: '5rem' }} /></td>

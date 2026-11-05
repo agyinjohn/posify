@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { CardSkeleton, Field, Modal, RefreshIndicator, useToast } from '../ui.jsx';
-import { fmt, qtyFmt } from '../format.js';
+import { COMMON_SIZES, fmt, productLabel, qtyFmt } from '../format.js';
 import ProductImportModal from './ProductImport.jsx';
 import { packName, packPriceFor, packSpecificPrice, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
 
-const blank = { name: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', packRetailPrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
+const blank = { name: '', size: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', packRetailPrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
 
 export default function Products() {
   const toast = useToast();
@@ -50,7 +50,7 @@ export default function Products() {
               ? <img className="product-card-img" src={p.image.url} alt="" loading="lazy" decoding="async" />
               : <div className="product-card-img placeholder" />}
             <div className="product-card-body">
-              <div className="product-card-name">{p.name}{!p.active && <span className="chip chip-muted">inactive</span>}</div>
+              <div className="product-card-name">{p.name}{p.size && <span className="size-chip">{p.size}</span>}{!p.active && <span className="chip chip-muted">inactive</span>}</div>
               <div className="product-card-sku">{p.sku}{p.category && p.category !== 'General' ? ` · ${p.category}` : ''}</div>
               <div className="product-card-prices">
                 {unitsOf(p) > 1 ? (
@@ -81,7 +81,17 @@ export default function Products() {
       </div>
 
       {importing && <ProductImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
-      {edit && <ProductForm p={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
+      {edit && (
+        <ProductForm
+          key={edit._id || `new-${edit.name}-${edit.size}`}
+          p={edit}
+          sizes={[...new Set([...COMMON_SIZES, ...(list || []).map((x) => x.size).filter(Boolean)])]}
+          onClose={() => setEdit(null)}
+          onSaved={() => { setEdit(null); load(); }}
+          // Same product in another size: start a new product with the details copied and a blank size, SKU and stock.
+          onAddSize={(from) => setEdit({ ...blank, ...from, _id: undefined, size: '', sku: '', barcode: '', stock: 0, image: undefined, active: true })}
+        />
+      )}
     </div>
   );
 }
@@ -93,7 +103,7 @@ export default function Products() {
 const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
 const money = (n) => (n === null || n === undefined ? undefined : fmt(n));
 
-function ProductForm({ p, onClose, onSaved }) {
+function ProductForm({ p, sizes = COMMON_SIZES, onClose, onSaved, onAddSize }) {
   const toast = useToast();
   const isNew = !p._id;
   const [f, setF] = useState(() => ({
@@ -102,7 +112,7 @@ function ProductForm({ p, onClose, onSaved }) {
     costPack: '',
     // The one pack price. For products saved before, this shows their old wholesale carton price, which is what a
     // carton sells at today; saving stores it as the pack price.
-    packRetailPrice: p._id && packSpecificPrice(p) !== null ? packSpecificPrice(p) : '',
+    packRetailPrice: packSpecificPrice(p) ?? '', // also carried over when adding another size of a product
   }));
   const [stockUnit, setStockUnit] = useState('pack'); // opening stock typed in packs or pieces
   const [busy, setBusy] = useState(false);
@@ -140,7 +150,7 @@ function ProductForm({ p, onClose, onSaved }) {
     if (costPiece === null) return toast('Enter a cost (per piece or per pack)', 'err');
     setBusy(true);
     const body = {
-      name: f.name, sku: f.sku, barcode: f.barcode, category: f.category,
+      name: f.name, size: (f.size || '').trim(), sku: f.sku, barcode: f.barcode, category: f.category,
       costPrice: costPiece, retailPrice: retailPiece,
       packRetailPrice: packed ? num(f.packRetailPrice) ?? 0 : 0,
       // Retired: the pack price is the wholesale price. Clearing these stops older products' wholesale fields
@@ -177,9 +187,13 @@ function ProductForm({ p, onClose, onSaved }) {
   );
 
   return (
-    <Modal title={isNew ? 'Add product' : `Edit ${p.name}`} onClose={onClose} wide>
+    <Modal title={isNew ? (p.name ? `Add another size of ${p.name}` : 'Add product') : `Edit ${productLabel(p)}`} onClose={onClose} wide>
       <form onSubmit={save} className="grid2">
         <Field label="Name"><input value={f.name} onChange={set('name')} required /></Field>
+        <Field label="Size (optional)" hint="Only for products that come in sizes, e.g. Small or 500ml. Each size is added as its own product.">
+          <input value={f.size || ''} onChange={set('size')} list="product-sizes" maxLength={30} placeholder="No size" autoComplete="off" />
+          <datalist id="product-sizes">{sizes.map((s) => <option key={s} value={s} />)}</datalist>
+        </Field>
         <Field label="SKU" hint="Short unique code to identify this product, e.g. RICE-5KG"><input value={f.sku} onChange={set('sku')} required /></Field>
         <Field label="Barcode" hint="Scan it here, or leave blank"><input value={f.barcode} onChange={set('barcode')} /></Field>
         <Field label="Category"><input value={f.category} onChange={set('category')} /></Field>
@@ -240,6 +254,7 @@ function ProductForm({ p, onClose, onSaved }) {
         )}
         <div className="actions span2">
           {!isNew && <button type="button" className={p.active ? 'danger' : ''} onClick={toggleActive}>{p.active ? 'Hide from sales' : 'Make active'}</button>}
+          {!isNew && onAddSize && <button type="button" onClick={() => onAddSize(p)}>Add another size</button>}
           <button className="primary" disabled={busy}>Save product</button>
         </div>
       </form>

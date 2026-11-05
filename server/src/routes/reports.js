@@ -12,6 +12,7 @@ import { toCsv } from '../lib/csv.js';
 import User from '../models/User.js';
 import { buildOverview, previousRange } from '../lib/analytics.js';
 import { packPriceFor } from '../lib/unitPrices.js';
+import { productLabel } from '../lib/productLabel.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
@@ -77,7 +78,7 @@ router.get('/by-product', asyncHandler(async (req, res) => {
 router.get('/stock', asyncHandler(async (req, res) => {
   const products = await Product.find({ active: true }).sort({ name: 1 }).lean();
   const rows = products.map((p) => ({
-    name: p.name, sku: p.sku, category: p.category, stock: p.stock, reorderLevel: p.reorderLevel,
+    name: productLabel(p), sku: p.sku, category: p.category, stock: p.stock, reorderLevel: p.reorderLevel,
     costPrice: p.costPrice, retailPrice: p.retailPrice, packPrice: (p.unitsPerPack > 1 ? packPriceFor(p) : null), unitsPerPack: p.unitsPerPack || 1,
     value: r2(p.stock * p.costPrice), low: p.stock <= p.reorderLevel,
   }));
@@ -103,7 +104,7 @@ router.get('/overview', asyncHandler(async (req, res) => {
     Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(SALE_FIELDS).lean(),
     Refund.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
     CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
-    Product.find({}).select('name sku category stock costPrice active').lean(),
+    Product.find({}).select('name size sku category stock costPrice active').lean(),
     User.find({}).select('name').lean(),
   ]);
   const sales = allSales.filter((s) => s.createdAt >= start);

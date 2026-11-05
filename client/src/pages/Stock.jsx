@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
-import { dateTime, fmt, qtyFmt } from '../format.js';
+import { dateTime, fmt, productLabel, qtyFmt } from '../format.js';
 import { hasPack, packName, toPieces, toPiecePrice, toPackPrice, unitsOf } from '../bulk.js';
 
 const MOVE_TYPE_CLASS = {
@@ -39,13 +39,13 @@ export default function Stock() {
           {out.length > 0 && (
             <div className="stock-alert out">
               <strong>{out.length} out of stock:</strong>{' '}
-              {out.slice(0, 5).map((p) => p.name).join(', ')}{out.length > 5 ? `… +${out.length - 5} more` : ''}
+              {out.slice(0, 5).map(productLabel).join(', ')}{out.length > 5 ? `… +${out.length - 5} more` : ''}
             </div>
           )}
           {low.length > 0 && (
             <div className="stock-alert low">
               <strong>{low.length} running low:</strong>{' '}
-              {low.slice(0, 5).map((p) => `${p.name} (${qtyFmt(p.stock)})`).join(', ')}{low.length > 5 ? `… +${low.length - 5} more` : ''}
+              {low.slice(0, 5).map((p) => `${productLabel(p)}: ${qtyFmt(p.stock)}`).join(', ')}{low.length > 5 ? `… +${low.length - 5} more` : ''}
             </div>
           )}
         </div>
@@ -76,7 +76,7 @@ function HistoryTab({ moves }) {
           {moves.map((m) => (
             <tr key={m._id}>
               <td className="muted-cell">{dateTime(m.createdAt)}</td>
-              <td><strong>{m.product?.name}</strong></td>
+              <td><strong>{m.product ? productLabel(m.product) : ''}</strong></td>
               <td><span className={`badge ${MOVE_TYPE_CLASS[m.type] || ''}`}>{m.type}</span></td>
               <td className={`num${m.qty < 0 ? ' owes' : ' ok'}`}>
                 <strong>{m.qty > 0 ? '+' : ''}{qtyFmt(m.qty)}</strong>
@@ -99,7 +99,7 @@ function MoveForm({ kind, products, onSaved }) {
   const [cost, setCost] = useState('');
   const [reason, setReason] = useState('');
   const [bulk, setBulk] = useState(true); // receive in packs when the product has a pack size
-  const labelOf = (p) => `${p.name} — ${p.sku}`;
+  const labelOf = (p) => `${productLabel(p)} — ${p.sku}`;
   const product = useMemo(() => products.find((p) => labelOf(p) === label), [products, label]);
   const units = product ? unitsOf(product) : 1;
   const inPacks = kind === 'receive' && bulk && units > 1;
@@ -294,13 +294,13 @@ function StockTakePanel({ products, onSaved }) {
           <tbody>
             {rows.map(({ p, counted, variance }) => (
               <tr key={p._id}>
-                <td>{p.name}</td>
+                <td>{productLabel(p)}</td>
                 <td className="muted-cell">{p.sku}</td>
                 <td className="num">{qtyFmt(p.stock)}</td>
                 <td className="num">
                   <input type="number" min="0" step="any" placeholder="–"
                     value={counts[p._id] ?? ''} onChange={(e) => setCount(p._id, e.target.value)}
-                    style={{ width: '5.5rem' }} aria-label={`Count for ${p.name}`} />
+                    style={{ width: '5.5rem' }} aria-label={`Count for ${productLabel(p)}`} />
                 </td>
                 <td className={`num${variance !== null && variance < 0 ? ' owes' : variance !== null && variance > 0 ? ' ok' : ''}`}>
                   {variance !== null ? <strong>{variance > 0 ? '+' : ''}{qtyFmt(variance)}</strong> : <span className="muted-cell">–</span>}
