@@ -176,3 +176,15 @@ test('applyPlan lets unexpected database errors surface', async () => {
   const plan = planImport({ rows: prep([mk({ 'Product Name': 'A', SKU: 'A', Price: 5, 'Cost (GH₵)': 3 })]), existingBySku: none, existingByBarcode: none, mode: 'skip' });
   await assert.rejects(() => applyPlan({ plan, ...fakeModels({ throwOther: true }), userId: 'u', newId }), /connection lost/);
 });
+
+test('an optional size column is kept as a label, and shapes generated SKUs', () => {
+  const m = mapHeaders(['Name', 'Size', 'Price']).map;
+  const sized = normalizeRow(['Super Star', 'Small', '5'], m);
+  assert.equal(sized.data.size, 'Small');
+  const plain = normalizeRow(['Salt', '', '3'], m);
+  assert.equal(plain.data.size, '');
+  const rows = [{ row: 2, ...sized }, { row: 3, ...normalizeRow(['Super Star', 'Large', '8'], m) }];
+  const plan = planImport({ rows, existingBySku: new Map(), existingByBarcode: new Map(), mode: 'skip' });
+  assert.deepEqual(plan.map((e) => [e.name, e.sku, e.status]), [['Super Star (Small)', 'SUPER-STAR-SMALL', 'create'], ['Super Star (Large)', 'SUPER-STAR-LARGE', 'create']]);
+  assert.equal(updateFields(rows[0].data).size, 'Small');
+});

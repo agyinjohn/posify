@@ -9,11 +9,12 @@ import { config } from '../config.js';
 import { uploadImage, deleteImage } from '../lib/cloud.js';
 import { SaleError } from '../lib/pricing.js';
 import { audit } from '../lib/audit.js';
+import { productLabel } from '../lib/productLabel.js';
 import mongoose from 'mongoose';
 import { mapHeaders, normalizeRow, planImport, summarize, applyPlan } from '../lib/productImport.js';
 
 const router = Router();
-const FIELDS = ['name', 'sku', 'barcode', 'category', 'costPrice', 'retailPrice', 'wholesalePrice', 'packRetailPrice', 'packWholesalePrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
+const FIELDS = ['name', 'size', 'sku', 'barcode', 'category', 'costPrice', 'retailPrice', 'wholesalePrice', 'packRetailPrice', 'packWholesalePrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
@@ -35,7 +36,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
   if (typeof category === 'string' && category) filter.category = category;
   if (typeof q === 'string' && q.trim()) {
     const rx = new RegExp(escapeRegex(q.trim().slice(0, 60)), 'i');
-    filter.$or = [{ name: rx }, { sku: rx }, { barcode: rx }];
+    filter.$or = [{ name: rx }, { size: rx }, { sku: rx }, { barcode: rx }];
   }
   if (lowStock === '1') filter.$expr = { $lte: ['$stock', '$reorderLevel'] };
   const query = Product.find(filter).sort({ name: 1 }).limit(5000).lean(); // plain objects: much cheaper to build and send
@@ -102,7 +103,7 @@ router.post('/', requireAuth, requireOwner, asyncHandler(async (req, res) => {
   if (opening > 0) {
     await StockMovement.create({ product: product._id, type: 'opening', qty: opening, costPrice: product.costPrice, user: req.user._id });
   }
-  audit({ req, action: 'product.create', target: product.name, targetId: product._id });
+  audit({ req, action: 'product.create', target: productLabel(product), targetId: product._id });
   res.status(201).json(product);
 }));
 

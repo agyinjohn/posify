@@ -1215,3 +1215,7 @@ img, video { max-width: 100%; }
   .adm-stat-icon { width: 32px; height: 32px; }
   .adm-stat strong { font-size: 1.25rem; }
 }
+
+/* Product size label, e.g. "Small", "500ml" */
+.size-chip { display: inline-block; margin-left: .35rem; padding: .05rem .45rem; border-radius: 999px; background: #E8ECF8; color: var(--indigo); font-size: .72rem; font-weight: 700; vertical-align: middle; white-space: nowrap; }
+.pname .size-chip { margin-left: .3rem; }

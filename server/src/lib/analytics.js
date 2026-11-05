@@ -1,5 +1,6 @@
 import { PAYMENT_METHODS, r2, r3 } from './money.js';
 import { netSale } from './returns.js';
+import { productLabel } from './productLabel.js';
 
 /**
  * Figures for the Reports overview, computed from plain sale records (pure, so it is unit tested).
@@ -120,7 +121,7 @@ export function buildOverview({ sales, prevSales = [], refunds = [], custPayment
   const sold = new Set(products_.keys());
   const idle = products
     .filter((p) => p.active !== false && p.stock > 0 && !sold.has(String(p._id)))
-    .map((p) => ({ id: String(p._id), name: p.name, sku: p.sku, stock: p.stock, value: r2(p.stock * (p.costPrice || 0)) }))
+    .map((p) => ({ id: String(p._id), name: productLabel(p), sku: p.sku, stock: p.stock, value: r2(p.stock * (p.costPrice || 0)) }))
     .sort((a, b) => b.value - a.value);
 
   return {

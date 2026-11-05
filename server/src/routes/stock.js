@@ -9,6 +9,7 @@ import { SaleError } from '../lib/pricing.js';
 import { r2, r3 } from '../lib/money.js';
 import { audit } from '../lib/audit.js';
 import { applyCount } from '../lib/stocktake.js';
+import { productLabel } from '../lib/productLabel.js';
 import { applyReceipt } from '../lib/cost.js';
 
 const router = Router();
@@ -61,7 +62,7 @@ router.get('/movements', asyncHandler(async (req, res) => {
   if (req.query.productId) { assertId(req.query.productId, 'product'); filter.product = req.query.productId; }
   if (typeof req.query.type === 'string' && ['opening', 'receipt', 'sale', 'void', 'return', 'adjustment'].includes(req.query.type)) filter.type = req.query.type;
   const rows = await StockMovement.find(filter).sort({ createdAt: -1 }).limit(200)
-    .populate('product', 'name sku').populate('user', 'name');
+    .populate('product', 'name size sku').populate('user', 'name');
   res.json(rows);
 }));
 
@@ -72,7 +73,7 @@ router.post('/stocktake', asyncHandler(async (req, res) => {
   const { note, lines } = req.body;
   if (!Array.isArray(lines) || lines.length === 0) throw new SaleError('No lines provided');
 
-  const products = await Product.find({ active: true }).select('name sku').lean();
+  const products = await Product.find({ active: true }).select('name size sku').lean();
   const byId = new Map(products.map((p) => [String(p._id), p]));
 
   const seen = new Set();
@@ -97,8 +98,8 @@ router.post('/stocktake', asyncHandler(async (req, res) => {
       read: async () => (await Product.findById(p._id).select('stock').lean())?.stock ?? null,
       cas: async (expected, value) => !!(await Product.findOneAndUpdate({ _id: p._id, stock: expected }, { $set: { stock: value } })),
     });
-    if (!applied) { skipped.push(p.name); continue; }
-    resultLines.push({ product: p._id, name: p.name, sku: p.sku, systemQty: applied.systemQty, countedQty: counted, variance: applied.variance });
+    if (!applied) { skipped.push(productLabel(p)); continue; }
+    resultLines.push({ product: p._id, name: productLabel(p), sku: p.sku, systemQty: applied.systemQty, countedQty: counted, variance: applied.variance });
     if (applied.variance !== 0) adjustments.push({ p, variance: applied.variance });
   }
 

@@ -10,6 +10,7 @@ import { SaleError } from '../lib/pricing.js';
 import { r2, r3 } from '../lib/money.js';
 import { audit } from '../lib/audit.js';
 import { applyReceipt } from '../lib/cost.js';
+import { productLabel } from '../lib/productLabel.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
@@ -49,7 +50,7 @@ router.post('/', asyncHandler(async (req, res) => {
     if (!p) throw new SaleError(`Product not found: ${l.productId}`, 404);
     const qty = r3(num(l.qty, 'Quantity', { min: 0, max: 1e6, allowZero: false }));
     const unitCost = r2(num(l.unitCost ?? p.costPrice, 'Unit cost', { min: 0 }));
-    return { product: p._id, name: p.name, sku: p.sku, qty, unitCost, lineTotal: r2(qty * unitCost) };
+    return { product: p._id, name: productLabel(p), sku: p.sku, qty, unitCost, lineTotal: r2(qty * unitCost) };
   });
 
   const total = r2(poLines.reduce((s, l) => s + l.lineTotal, 0));

@@ -9,6 +9,7 @@ import { r6 } from './money.js';
 
 const ALIASES = {
   name: ['name', 'product', 'product name', 'item', 'item name', 'description'],
+  size: ['size', 'variant', 'variation', 'size name', 'size label'],
   sku: ['sku', 'code', 'item code', 'product code'],
   barcode: ['barcode', 'bar code', 'upc', 'ean'],
   category: ['category', 'group', 'type'],
@@ -123,6 +124,7 @@ export function normalizeRow(cells, map) {
 
   const data = {
     name,
+    size: text(raw.size, 30),
     sku: text(raw.sku, 60),
     barcode: text(raw.barcode, 60),
     category: text(raw.category, 60) || 'General',
@@ -152,12 +154,12 @@ export function planImport({ rows, existingBySku, existingByBarcode, mode }) {
   const usedSkus = (s) => skus.has(s) || existingBySku.has(s);
 
   return rows.map(({ row, data, errors, warnings }) => {
-    const entry = { row, name: data.name, sku: data.sku, status: 'create', errors: [...errors], warnings: [...warnings], data, existingId: null, generatedSku: false };
+    const entry = { row, name: data.size ? `${data.name} (${data.size})` : data.name, sku: data.sku, status: 'create', errors: [...errors], warnings: [...warnings], data, existingId: null, generatedSku: false };
     if (entry.errors.length) { entry.status = 'error'; return entry; }
 
     if (!data.sku) {
       // No SKU in the sheet: use the barcode, else a short code made from the name, kept unique.
-      let base = data.barcode || slug(data.name) || 'ITEM';
+      let base = data.barcode || slug(data.size ? `${data.name} ${data.size}` : data.name) || 'ITEM';
       let candidate = base; let n = 1;
       while (usedSkus(candidate)) { n += 1; candidate = `${base}-${n}`; }
       data.sku = candidate; entry.sku = candidate; entry.generatedSku = true;
@@ -200,7 +202,7 @@ export const summarize = (plan) => ({
 // The fields an update may change. Stock and the SKU are never touched; blank optional cells do not erase data.
 export function updateFields(data) {
   const set = {
-    name: data.name, category: data.category, costPrice: data.costPrice, retailPrice: data.retailPrice,
+    name: data.name, size: data.size, category: data.category, costPrice: data.costPrice, retailPrice: data.retailPrice,
     wholesalePrice: data.wholesalePrice, packRetailPrice: data.packRetailPrice, packWholesalePrice: data.packWholesalePrice,
     unitsPerPack: data.unitsPerPack, packLabel: data.packLabel, reorderLevel: data.reorderLevel,
   };

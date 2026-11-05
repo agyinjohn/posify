@@ -19,3 +19,11 @@ export const newId = () => {
   try { crypto.getRandomValues(bytes); } catch { for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256); }
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 };
+
+// A product's name with its optional size, e.g. "Super Star (Small)". Mirrors server/src/lib/productLabel.js.
+export const productLabel = (p) => {
+  const size = typeof p?.size === 'string' ? p.size.trim() : '';
+  return size ? `${p.name} (${size})` : (p?.name ?? '');
+};
+// Sizes offered when adding a product; the shop's own sizes are added to the list as they are used.
+export const COMMON_SIZES = ['Small', 'Medium', 'Large', 'Extra large', 'Mini', 'Family size', '250ml', '330ml', '350ml', '500ml', '750ml', '1L', '1.5L', '2L', '5L', '100g', '200g', '250g', '400g', '500g', '1kg', '2kg', '5kg', '25kg', '50kg'];
