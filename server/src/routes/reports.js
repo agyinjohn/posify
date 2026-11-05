@@ -12,6 +12,8 @@ import { toCsv } from '../lib/csv.js';
 import User from '../models/User.js';
 import { buildOverview, previousRange } from '../lib/analytics.js';
 import { packPriceFor } from '../lib/unitPrices.js';
+import { buildDailyReport, dailyCsv } from '../lib/dailyReport.js';
+import Customer from '../models/Customer.js';
 import { productLabel } from '../lib/productLabel.js';
 
 const router = Router();
@@ -110,6 +112,33 @@ router.get('/overview', asyncHandler(async (req, res) => {
   const sales = allSales.filter((s) => s.createdAt >= start);
   const prevSales = allSales.filter((s) => s.createdAt < start);
   res.json({ ...buildOverview({ sales, prevSales, refunds, custPayments, products, users, from, to }), previousRange: prev });
+}));
+
+// Daily sales report: one day in full, compared with the day before. ?format=csv&part=sales|items downloads it.
+router.get('/daily-sales', asyncHandler(async (req, res) => {
+  const { start, end, from } = dayRange(req.query.date, req.query.date);
+  const prevStart = new Date(start.getTime() - 86_400_000);
+  const [allSales, refunds, custPayments, products, users] = await Promise.all([
+    Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(`${SALE_FIELDS} receiptNo customerName customerPhone items.packLabel`).lean(),
+    Refund.find({ createdAt: { $gte: start, $lt: end } }).select('createdAt receiptNo method amount reason user').lean(),
+    CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('createdAt customer method amount note user').lean(),
+    Product.find({}).select('name size sku category stock costPrice active unitsPerPack').lean(),
+    User.find({}).select('name').lean(),
+  ]);
+  const customerIds = [...new Set(custPayments.map((p) => String(p.customer)))];
+  const customers = customerIds.length ? await Customer.find({ _id: { $in: customerIds } }).select('name').lean() : [];
+  const report = buildDailyReport({
+    date: from, sales: allSales.filter((s) => s.createdAt >= start), prevSales: allSales.filter((s) => s.createdAt < start),
+    refunds, custPayments, products, users, customers,
+  });
+  if (req.query.format === 'csv') {
+    const part = req.query.part === 'items' ? 'items' : 'sales';
+    const { header, rows } = dailyCsv(report, part);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${part}-${from}.csv"`);
+    return res.send(toCsv(header, rows));
+  }
+  res.json(report);
 }));
 
 export default router;

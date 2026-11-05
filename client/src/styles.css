@@ -1219,3 +1219,40 @@ img, video { max-width: 100%; }
 /* Product size label, e.g. "Small", "500ml" */
 .size-chip { display: inline-block; margin-left: .35rem; padding: .05rem .45rem; border-radius: 999px; background: #E8ECF8; color: var(--indigo); font-size: .72rem; font-weight: 700; vertical-align: middle; white-space: nowrap; }
 .pname .size-chip { margin-left: .3rem; }
+
+/* ── Daily sales report (Reports › Daily report) ── */
+.daily-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: .75rem 1rem; margin: 1rem 0 .4rem; }
+.daily-date { display: flex; align-items: flex-end; gap: .4rem; }
+.daily-date .field { margin: 0; }
+.daily-date > button:not(.ghost) { min-width: 2.5rem; font-size: 1.2rem; line-height: 1; padding: .4rem .6rem; }
+.daily-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.daily-head h2 { margin: .4rem 0 .1rem; font-size: 1.15rem; }
+.daily-head p { margin: 0; color: var(--muted); font-size: .86rem; }
+.daily-report tr.clickable { cursor: pointer; }
+.daily-report .report-kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.daily-sales td:first-child, .daily-sales td:nth-child(2) { white-space: nowrap; }
+.daily-report tr.clickable:hover td { background: var(--paper); }
+.cash-check { margin-top: .8rem; border-top: 1px dashed var(--line); padding-top: .6rem; font-size: .9rem; }
+.cash-check > div { display: flex; justify-content: space-between; gap: 1rem; padding: .15rem 0; }
+.cash-check > div span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cash-check .total { font-weight: 800; font-size: 1rem; border-top: 1px solid var(--line); margin-top: .3rem; padding-top: .4rem; }
+.cash-check .hint { margin: .3rem 0 0; }
+.daily-foot { display: none; }
+@media (max-width: 640px) {
+  .daily-toolbar { flex-direction: column; align-items: stretch; }
+  .daily-date .field { flex: 1; }
+  .daily-date .field input { width: 100%; }
+  .daily-actions button { flex: 1; }
+}
+/* Print report: the whole report on A4, without the app around it. */
+@media print {
+  body.print-report .daily-report, body.print-report .daily-report * { visibility: visible; }
+  body.print-report .daily-report { position: absolute; left: 0; top: 0; width: 100%; }
+  body.print-report .side, body.print-report .topbar, body.print-report .tab-bar { display: none; }
+  .daily-report .no-print { display: none !important; }
+  .daily-report .daily-foot { display: block; }
+  .daily-report .viz-grid { grid-template-columns: 1fr 1fr; }
+  .daily-report .viz-panel, .daily-report tr { break-inside: avoid; }
+  .daily-report .tablewrap { overflow: visible; }
+  .daily-report .report-kpis { grid-template-columns: repeat(4, 1fr); }
+}
