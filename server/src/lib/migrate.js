@@ -50,6 +50,11 @@ export async function migrateToShops({ shopName = 'My shop', log = console.log }
     }
   }
 
+  // Blank barcodes saved as '' by an earlier import clash with each other under the per-shop unique rule:
+  // turn them back into "no barcode".
+  const blank = await mongoose.connection.collection('products').updateMany({ barcode: '' }, { $unset: { barcode: '' } });
+  if (blank.modifiedCount) log(`[migrate] Product: cleared ${blank.modifiedCount} blank barcode(s) left by an earlier import`);
+
   // The old single counter becomes the first shop's, so its receipt numbers carry on (R-000124 after R-000123).
   const counters = mongoose.connection.collection('counters');
   const legacy = await counters.findOne({ _id: 'receipt' });

@@ -8,7 +8,9 @@ const productSchema = new mongoose.Schema(
     // its own product with its own price and stock; leave empty for products without sizes.
     size: { type: String, trim: true, maxlength: 30, default: '' },
     sku: { type: String, required: true, trim: true, maxlength: 60 }, // unique within a shop (index below)
-    barcode: { type: String, trim: true, maxlength: 60 },
+    // An empty barcode means "no barcode": never store '' (the per-shop unique rule counts every text value, so
+    // two products with a blank barcode would clash).
+    barcode: { type: String, trim: true, maxlength: 60, set: (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v) },
     category: { type: String, trim: true, maxlength: 60, default: 'General' },
     costPrice: { type: Number, required: true, min: 0, default: 0 },
     retailPrice: { type: Number, required: true, min: 0 },
