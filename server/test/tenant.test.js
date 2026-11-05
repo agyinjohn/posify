@@ -90,3 +90,11 @@ test('owner temporary passwords: sealed, readable only with the server secret', 
   assert.equal(open(box, 'secret-2'), null);
   assert.equal(open('garbage', 'secret-1'), null);
 });
+
+test('the Product model never stores an empty barcode', async () => {
+  const { default: Product } = await import('../src/models/Product.js');
+  assert.equal(new Product({ name: 'A', sku: 'A', retailPrice: 1, barcode: '' }).barcode, undefined);
+  assert.equal(new Product({ name: 'A', sku: 'A', retailPrice: 1, barcode: '   ' }).barcode, undefined);
+  assert.equal(new Product({ name: 'A', sku: 'A', retailPrice: 1, barcode: ' 600123 ' }).barcode, '600123');
+  assert.equal('barcode' in new Product({ name: 'A', sku: 'A', retailPrice: 1, barcode: '' }).toObject(), false);
+});

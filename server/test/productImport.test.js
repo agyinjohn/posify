@@ -188,3 +188,24 @@ test('an optional size column is kept as a label, and shapes generated SKUs', ()
   assert.deepEqual(plan.map((e) => [e.name, e.sku, e.status]), [['Super Star (Small)', 'SUPER-STAR-SMALL', 'create'], ['Super Star (Large)', 'SUPER-STAR-LARGE', 'create']]);
   assert.equal(updateFields(rows[0].data).size, 'Small');
 });
+
+test('a blank barcode is "no barcode", so many products without barcodes can be imported', async () => {
+  const m = mapHeaders(['Name', 'Barcode', 'Price']).map;
+  const rows = ['A', 'B', 'C'].map((n, i) => ({ row: i + 2, ...normalizeRow([n, '  ', '5'], m) }));
+  rows.forEach((r) => assert.equal(r.data.barcode, undefined));
+  const plan = planImport({ rows, existingBySku: new Map(), existingByBarcode: new Map(), mode: 'skip' });
+  assert.deepEqual(plan.map((e) => e.status), ['create', 'create', 'create']);
+  const written = [];
+  const Product = { async bulkWrite(ops) { written.push(...ops.map((o) => o.insertOne.document)); } };
+  await applyPlan({ plan, Product, StockMovement: { insertMany: async () => {} }, userId: 'u', newId: () => 'x' });
+  assert.ok(written.every((d) => d.barcode === undefined), 'no product is written with an empty barcode');
+});
+
+test('opening stock given in packs and loose pieces is added together, with a note', () => {
+  const m = mapHeaders(['Name', 'Pieces per pack', 'Price per pack', 'Opening stock (pieces)', 'Opening stock (packs)']).map;
+  const both = normalizeRow(['Amuzu', '12', '450', '40', '2'], m);
+  assert.equal(both.data.stock, 64);
+  assert.ok(both.warnings.some((w) => /2 packs × 12 \+ 40 loose pieces = 64 pieces/.test(w)));
+  assert.equal(normalizeRow(['A', '12', '450', '', '2'], m).data.stock, 24);
+  assert.equal(normalizeRow(['A', '12', '450', '7', ''], m).data.stock, 7);
+});

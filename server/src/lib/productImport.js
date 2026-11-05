@@ -119,14 +119,18 @@ export function normalizeRow(cells, map) {
   }
 
   let stock = stockPieces ?? 0;
-  if (stockPieces === null && stockPacks !== null && packed) stock = Math.round(stockPacks * units * 1000) / 1000;
+  if (stockPacks !== null && packed) {
+    // Both columns filled means "this many packs plus these loose pieces": add them, and say so on the row.
+    stock = Math.round((stockPacks * units + (stockPieces ?? 0)) * 1000) / 1000;
+    if (stockPieces !== null) warnings.push(`Opening stock: ${stockPacks} pack${stockPacks === 1 ? '' : 's'} × ${units} + ${stockPieces} loose pieces = ${stock} pieces`);
+  }
   if (stock > 1e6) { errors.push('Opening stock is too large'); stock = 0; }
 
   const data = {
     name,
     size: text(raw.size, 30),
     sku: text(raw.sku, 60),
-    barcode: text(raw.barcode, 60),
+    barcode: text(raw.barcode, 60) || undefined, // blank = no barcode (never stored as '')
     category: text(raw.category, 60) || 'General',
     unitsPerPack: packed ? units : 1,
     packLabel: packed ? text(raw.packLabel, 20) : '',
