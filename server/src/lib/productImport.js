@@ -228,7 +228,9 @@ export async function applyPlan({ plan, Product, StockMovement, userId, newId })
       for (const we of list) {
         const index = we.index ?? we.err?.index;
         const code = we.code ?? we.err?.code;
-        failed.set(index, code === 11000 ? 'SKU or barcode is already in use' : (we.errmsg ?? we.err?.errmsg ?? 'The database rejected this row'));
+        const msg = we.errmsg ?? we.err?.errmsg ?? '';
+        const rule = /index: (\S+)/.exec(msg)?.[1];
+        failed.set(index, code === 11000 ? `SKU or barcode is already in use${rule ? ` (database rule ${rule})` : ''}` : (msg || 'The database rejected this row'));
       }
     }
     const moves = [];
