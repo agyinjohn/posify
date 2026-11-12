@@ -102,7 +102,7 @@ function MoveForm({ kind, products, onSaved }) {
   const labelOf = (p) => `${productLabel(p)} — ${p.sku}`;
   const product = useMemo(() => products.find((p) => labelOf(p) === label), [products, label]);
   const units = product ? unitsOf(product) : 1;
-  const inPacks = kind === 'receive' && bulk && units > 1;
+  const inPacks = bulk && units > 1;
   const pack = product ? packName(product) : 'pack';
 
   const submit = async (e) => {
@@ -110,7 +110,8 @@ function MoveForm({ kind, products, onSaved }) {
     if (!product) return toast('Choose a product from the list', 'err');
     try {
       // Bulk entry: quantity and cost are typed per pack and sent per piece.
-      const body = { productId: product._id, qty: inPacks ? toPieces(qty, units) : Number(qty) };
+      const pieces = inPacks ? toPieces(qty, units) : Number(qty);
+      const body = { productId: product._id, qty: pieces };
       if (kind === 'receive') { if (cost !== '') body.costPrice = inPacks ? toPiecePrice(cost, units) : Number(cost); body.note = reason; }
       else body.reason = reason;
       await api(`/stock/${kind}`, { method: 'POST', body });
@@ -126,18 +127,20 @@ function MoveForm({ kind, products, onSaved }) {
         <input list="stock-products" value={label} onChange={(e) => setLabel(e.target.value)} required placeholder="Type to search…" />
         <datalist id="stock-products">{products.map((p) => <option key={p._id} value={labelOf(p)} />)}</datalist>
       </Field>
-      {kind === 'receive' && units > 1 && (
+      {units > 1 && (
         <div className="span2 bulk-mode">
-          <span>Receive and cost per</span>
-          <div className="seg" role="group" aria-label="Receive unit">
+          <span>{kind === 'receive' ? 'Receive and cost per' : 'Adjust by'}</span>
+          <div className="seg" role="group" aria-label="Unit">
             <button type="button" className={bulk ? 'on' : ''} onClick={() => { setBulk(true); setQty(''); setCost(''); }}>{pack} (of {units})</button>
             <button type="button" className={!bulk ? 'on' : ''} onClick={() => { setBulk(false); setQty(''); setCost(''); }}>piece</button>
           </div>
         </div>
       )}
       <Field
-        label={kind === 'receive' ? `Quantity received${inPacks ? ` (${pack}s)` : ''}` : 'Change in quantity'}
-        hint={kind === 'adjust' ? 'Use a minus sign to remove, e.g. −3' : (inPacks && Number(qty) > 0 ? `= ${toPieces(qty, units)} pieces` : undefined)}
+        label={kind === 'receive' ? `Quantity received${inPacks ? ` (${pack}s)` : ''}` : `Change in quantity${inPacks ? ` (${pack}s)` : ''}`}
+        hint={kind === 'adjust'
+          ? (inPacks && qty !== '' ? `= ${toPieces(qty, units)} pieces · use a minus sign to remove, e.g. −3` : 'Use a minus sign to remove, e.g. −3')
+          : (inPacks && Number(qty) > 0 ? `= ${toPieces(qty, units)} pieces` : undefined)}
       >
         <input type="number" step="any" inputMode="decimal" min={kind === 'receive' ? '0' : undefined} value={qty} onChange={(e) => setQty(e.target.value)} required />
       </Field>
