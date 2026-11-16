@@ -12,7 +12,7 @@ const keysFor = (isOwner) => {
   const t = todayStr();
   const common = ['/products', '/customers?q=', `/sales?from=${t}&to=${t}`];
   const owner = [
-    '/products?all=1&q=', `/reports/overview?from=${weekAgo()}&to=${t}`, `/reports/daily?date=${t}`, '/reports/stock', '/shifts', '/suppliers?q=',
+    '/products?all=1&q=', `/reports/overview?from=${weekAgo()}&to=${t}`, `/reports/daily-sales?date=${t}`, '/reports/stock', '/shifts', '/suppliers?q=',
     '/purchase-orders', '/users', '/stock/movements', `/audit?from=${t}&to=${t}`,
   ];
   return isOwner ? [...common, ...owner] : common;
@@ -28,7 +28,7 @@ const ROUTE_KEYS = (isOwner) => {
     '/products': isOwner ? ['/products?all=1&q='] : [],
     '/stock': ['/products', '/stock/movements'],
     '/suppliers': ['/suppliers?q=', '/purchase-orders'],
-    '/reports': [`/reports/overview?from=${weekAgo()}&to=${t}`, `/reports/daily?date=${t}`],
+    '/reports': [`/reports/overview?from=${weekAgo()}&to=${t}`, `/reports/daily-sales?date=${t}`],
     '/shifts': ['/shifts'],
     '/users': ['/users'],
     '/audit': [`/audit?from=${t}&to=${t}`],

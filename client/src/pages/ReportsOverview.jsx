@@ -8,10 +8,10 @@ import { fmt, qtyFmt, todayStr } from '../format.js';
 
 // Validated categorical slots (dataviz reference palette, light surface): slot 1 blue, slot 2 orange.
 // One-series charts use slot 1 only; revenue and profit (same unit, one axis) use slots 1 and 2.
-const SERIES_1 = '#2a78d6';
-const SERIES_2 = '#eb6834';
-const UNIT = { pieces: { label: 'Single pieces (retail)', color: SERIES_1 }, packs: { label: 'Full packs (wholesale)', color: SERIES_2 } };
-const theme = createTheme({ typography: { fontFamily: "'Public Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" } });
+export const SERIES_1 = '#2a78d6';
+export const SERIES_2 = '#eb6834';
+export const UNIT = { pieces: { label: 'Single pieces (retail)', color: SERIES_1 }, packs: { label: 'Full packs (wholesale)', color: SERIES_2 } };
+export const theme = createTheme({ typography: { fontFamily: "'Public Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" } });
 
 const DAY = 86_400_000;
 const iso = (t) => new Date(t).toISOString().slice(0, 10);
@@ -34,11 +34,11 @@ const compact = (n) => {
 };
 const money = (v) => (v == null ? '' : fmt(v));
 const shortDate = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
-const hourLabel = (h) => (h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`);
+export const hourLabel = (h) => (h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`);
 const WEEK = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 const clip = (s, n = 18) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-function Delta({ value }) {
+export function Delta({ value }) {
   if (value === null || value === undefined) return <small className="kpi-delta">no earlier data</small>;
   const up = value > 0;
   const same = value === 0;
@@ -49,7 +49,7 @@ function Delta({ value }) {
   );
 }
 
-function Panel({ title, sub, children, wide }) {
+export function Panel({ title, sub, children, wide }) {
   return (
     <section className={`viz-panel${wide ? ' wide' : ''}`}>
       <header><h3>{title}</h3>{sub && <p>{sub}</p>}</header>

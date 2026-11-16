@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, download } from '../api.js';
-import { cacheGet, swrFetch } from '../cache.js';
+import { download } from '../api.js';
+import { swrFetch } from '../cache.js';
 import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { fmt, qtyFmt, todayStr } from '../format.js';
 import Overview from './ReportsOverview.jsx';
+import DailyReport from './DailyReport.jsx';
 
-const TABS = [['overview', 'Overview'], ['daily', 'Daily summary'], ['product', 'Sales by product'], ['stock', 'Stock list']];
+const TABS = [['overview', 'Overview'], ['daily', 'Daily report'], ['product', 'Sales by product'], ['stock', 'Stock list']];
 
 export default function Reports() {
   const [tab, setTab] = useState('overview');
@@ -17,65 +18,10 @@ export default function Reports() {
         ))}
       </div>
       {tab === 'overview' && <Overview />}
-      {tab === 'daily' && <Daily />}
+      {tab === 'daily' && <DailyReport />}
       {tab === 'product' && <ByProduct />}
       {tab === 'stock' && <StockList />}
     </div>
-  );
-}
-
-function Daily() {
-  const toast = useToast();
-  const [date, setDate] = useState(todayStr());
-  const [d, setD] = useState(() => cacheGet(`/reports/daily?date=${todayStr()}`) ?? undefined);
-  const [refreshing, setRefreshing] = useState(false);
-  useEffect(() => {
-    setD((cur) => cacheGet(`/reports/daily?date=${date}`) ?? (date === todayStr() ? cur : undefined));
-    swrFetch(`/reports/daily?date=${date}`, { onData: setD, onRefreshing: setRefreshing, ttlMs: 60_000 })
-      .catch((e) => { toast(e.message, 'err'); setD(null); });
-  }, [date, toast]);
-
-  return (
-    <>
-      <RefreshIndicator refreshing={refreshing} />
-      <div className="filters" style={{ marginTop: '1rem' }}>
-        <Field label="Day"><input type="date" value={date} max={todayStr()} onChange={(e) => setDate(e.target.value)} /></Field>
-      </div>
-      {d === undefined && <TableSkeleton cols={2} rows={6} />}
-      {d && (
-        <>
-          <div className="report-kpis">
-            <div className="report-kpi"><span>Sales</span><strong>{d.salesCount}</strong></div>
-            <div className="report-kpi key"><span>Total sold</span><strong>{fmt(d.total)}</strong></div>
-            <div className="report-kpi"><span>Profit</span><strong>{fmt(d.profit)}</strong></div>
-            <div className="report-kpi"><span>Discounts</span><strong>{fmt(d.discounts)}</strong></div>
-            <div className="report-kpi warn"><span>Sold on credit</span><strong>{fmt(d.creditGiven)}</strong></div>
-            <div className="report-kpi ok"><span>Debts collected</span><strong>{fmt(d.debtCollected)}</strong></div>
-            {d.refunded > 0 && <div className="report-kpi warn"><span>Refunded</span><strong>{fmt(d.refunded)}</strong></div>}
-          </div>
-
-          <div className="report-section-title">Received by payment method</div>
-          <div className="tablewrap narrow">
-            <table>
-              <tbody>
-                {Object.entries(d.byMethod).map(([m, v]) => (
-                  <tr key={m}><td>{m}</td><td className="num"><strong>{fmt(v)}</strong></td></tr>
-                ))}
-                <tr className="sum">
-                  <td>Total received</td>
-                  <td className="num">{fmt(Object.values(d.byMethod).reduce((s, v) => s + v, 0))}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          {d.voidedCount > 0 && (
-            <p className="hint" style={{ marginTop: '.75rem' }}>
-              {d.voidedCount} voided sale{d.voidedCount > 1 ? 's' : ''} ({fmt(d.voidedTotal)}) not counted above.
-            </p>
-          )}
-        </>
-      )}
-    </>
   );
 }
 
