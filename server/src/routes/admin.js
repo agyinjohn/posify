@@ -142,10 +142,10 @@ router.get('/shops/:id/sales-data', asyncHandler(async (req, res) => {
   assertId(req.params.id);
   const shop = await Shop.findById(req.params.id);
   if (!shop) return res.status(404).json({ error: 'Shop not found' });
-  res.json(await salesDataSummary(shop._id));
+  res.json(await salesDataSummary(shop._id, { before: req.query.before }));
 }));
 
-// Clear a shop's test sales, keeping products, customers and users. The admin must type the shop's name to confirm.
+// Clear a shop's test sales (all, or only those before a date), keeping products, customers and users. The admin must type the shop's name to confirm.
 router.post('/shops/:id/clear-sales', asyncHandler(async (req, res) => {
   assertId(req.params.id);
   const shop = await Shop.findById(req.params.id);
@@ -153,7 +153,8 @@ router.post('/shops/:id/clear-sales', asyncHandler(async (req, res) => {
   const typed = typeof req.body?.confirm === 'string' ? req.body.confirm.trim().toLowerCase() : '';
   if (typed !== shop.name.trim().toLowerCase()) throw new SaleError('Type the shop name exactly to confirm');
   const restoreStock = req.body?.restoreStock !== false;
-  const result = await clearShopSales(shop._id, { restoreStock });
+  const before = req.body?.before || null; // 'YYYY-MM-DD': only sales before that day; empty: everything
+  const result = await clearShopSales(shop._id, { restoreStock, before });
   audit({ req, action: 'platform.sales.clear', username: `admin:${req.admin.username}`, target: shop.name, targetId: shop._id, detail: { restoreStock, ...result }, shop: shop._id });
   res.json(result);
 }));

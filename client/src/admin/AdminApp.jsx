@@ -312,25 +312,40 @@ function NewShop({ onClose, onCreated }) {
 
 const n = (v, one, many = `${one}s`) => `${v} ${v === 1 ? one : many}`;
 
-// Wipe a shop's test sales (keeps products, customers and users). Shows what will go, then asks for the shop name.
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const longDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+// Wipe a shop's test sales (all, or only those before a date), keeping products, customers and users.
+// Shows what will go, then asks for the shop name.
 function ClearSales({ shop, onClose }) {
   const toast = useToast();
+  const [scope, setScope] = useState('all'); // 'all' | 'before'
+  const [before, setBefore] = useState(todayIso());
   const [info, setInfo] = useState(null);
   const [restore, setRestore] = useState(true);
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
   const closeRef = useRef(onClose); closeRef.current = onClose;
+  const dated = scope === 'before';
   useEffect(() => {
-    adminApi(`/shops/${shop.id}/sales-data`).then(setInfo).catch((e) => { toast(e.message, 'err'); closeRef.current(); });
-  }, [shop.id, toast]);
+    if (dated && !before) return;
+    let live = true;
+    setInfo(null);
+    adminApi(`/shops/${shop.id}/sales-data${dated ? `?before=${before}` : ''}`)
+      .then((r) => { if (live) setInfo(r); })
+      .catch((e) => { toast(e.message, 'err'); closeRef.current(); });
+    return () => { live = false; };
+  }, [shop.id, toast, dated, before]);
 
   const matches = typed.trim().toLowerCase() === shop.name.trim().toLowerCase();
   const submit = async (e) => {
-    e.preventDefault(); if (!matches) return;
+    e.preventDefault(); if (!matches || !info) return;
     setBusy(true);
-    try { setDone(await adminApi(`/shops/${shop.id}/clear-sales`, { method: 'POST', body: { confirm: typed, restoreStock: restore } })); toast(`${shop.name}: sales cleared`); }
-    catch (err) { toast(err.message, 'err'); }
+    try {
+      setDone(await adminApi(`/shops/${shop.id}/clear-sales`, { method: 'POST', body: { confirm: typed, restoreStock: restore, before: dated ? before : null } }));
+      toast(`${shop.name}: sales cleared`);
+    } catch (err) { toast(err.message, 'err'); }
     setBusy(false);
   };
 
@@ -338,62 +353,73 @@ function ClearSales({ shop, onClose }) {
     return (
       <Modal title="Sales cleared" onClose={onClose}>
         <div className="adm-created"><CircleCheck size={28} aria-hidden="true" /><p>
-          Removed {n(done.sales, 'sale')}, {n(done.refunds, 'refund')}, {n(done.debtPayments, 'debt payment')} and {n(done.shifts, 'shift')}.
-          {done.customersReset > 0 && <> {n(done.customersReset, 'customer balance')} set back to 0.</>}
+          Removed {n(done.sales, 'sale')}{done.before && <> made before {longDay(done.before)}</>}, {n(done.refunds, 'refund')}, {n(done.debtPayments, 'debt payment')} and {n(done.shifts, 'shift')}.
+          {done.customersReset > 0 && <> {n(done.customersReset, 'customer balance')} {done.before ? 'adjusted' : 'set back to 0'}.</>}
           {done.productsRestocked > 0 && <> {done.piecesRestocked} pieces put back into stock across {n(done.productsRestocked, 'product')}.</>}
-          {' '}The next receipt will be R-000001.
+          {done.receiptsRestarted ? ' The next receipt will be R-000001.' : ' Receipt numbers carry on as before.'}
         </p></div>
         <p className="hint">Anyone signed in to {shop.name} should refresh the page to see the cleared reports.</p>
         <div className="actions"><button className="primary" onClick={onClose}>Done</button></div>
       </Modal>
     );
   }
+  const total = info ? info.sales + info.refunds + info.debtPayments + info.shifts + info.heldSales + info.customersOwing + info.stockMoves : 0;
   return (
     <Modal title={`Clear sales for ${shop.name}?`} onClose={onClose}>
-      {!info ? <p className="hint">Checking what this shop has…</p> : (
-        <form onSubmit={submit} className="adm-clear">
-          {info.sales + info.refunds + info.debtPayments + info.shifts + info.heldSales + info.customersOwing === 0 && info.stockMoves === 0 ? (
-            <p>This shop has no sales data to clear.</p>
-          ) : (
-            <>
-              <p>For shops that tested the till before going live. <strong>This cannot be undone.</strong></p>
-              <div className="adm-clear-lists">
-                <div>
-                  <h4>Removed</h4>
-                  <ul>
-                    <li>{n(info.sales, 'sale')}{info.firstSale && <span className="adm-muted"> ({dateTime(info.firstSale)} – {dateTime(info.lastSale)})</span>}</li>
-                    <li>{n(info.refunds, 'refund')} and {n(info.creditNotes, 'credit note')}</li>
-                    <li>{n(info.debtPayments, 'debt payment')}</li>
-                    <li>{n(info.shifts, 'shift')} and {n(info.heldSales, 'held sale')}</li>
-                    <li>What {n(info.customersOwing, 'customer')} owe{info.customersOwing === 1 ? 's' : ''} (set back to 0)</li>
-                    <li>Receipt numbers restart at R-000001</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4>Kept</h4>
-                  <ul><li>Products and prices</li><li>Customers</li><li>Suppliers and deliveries</li><li>Users and passwords</li></ul>
-                </div>
+      <form onSubmit={submit} className="adm-clear">
+        <p>For shops that tested the till before going live. <strong>This cannot be undone.</strong></p>
+        <div className="seg adm-clear-scope" role="group" aria-label="What to clear">
+          <button type="button" className={dated ? '' : 'on'} onClick={() => setScope('all')} aria-pressed={!dated}>All sales</button>
+          <button type="button" className={dated ? 'on' : ''} onClick={() => setScope('before')} aria-pressed={dated}>Sales before a date</button>
+        </div>
+        {dated && (
+          <Field label="Clear sales made before" hint={before ? `Everything up to the end of ${longDay(new Date(Date.parse(`${before}T00:00:00Z`) - 86400000).toISOString().slice(0, 10))} goes; sales on ${longDay(before)} and after are kept.` : undefined}>
+            <input type="date" value={before} max={todayIso()} onChange={(e) => setBefore(e.target.value)} required />
+          </Field>
+        )}
+        {!info ? <p className="hint">Checking what this shop has…</p> : total === 0 ? (
+          <p className="adm-clear-none">{dated ? `No sales data before ${longDay(before)}.` : 'This shop has no sales data to clear.'}</p>
+        ) : (
+          <>
+            <div className="adm-clear-lists">
+              <div>
+                <h4>Removed</h4>
+                <ul>
+                  <li>{n(info.sales, 'sale')}{info.firstSale && <span className="adm-muted"> ({dateTime(info.firstSale)} – {dateTime(info.lastSale)})</span>}</li>
+                  <li>{n(info.refunds, 'refund')} and {n(info.creditNotes, 'credit note')}{dated && ' on those sales'}</li>
+                  <li>{n(info.debtPayments, 'debt payment')}</li>
+                  <li>{n(info.shifts, 'shift')}{dated && ' closed before the date'} and {n(info.heldSales, 'held sale')}</li>
+                  {dated
+                    ? <li>{n(info.customersOwing, 'customer')}: what they owe from those sales comes off their balance</li>
+                    : <li>What {n(info.customersOwing, 'customer')} owe{info.customersOwing === 1 ? 's' : ''} (set back to 0)</li>}
+                  {!dated && <li>Receipt numbers restart at R-000001</li>}
+                </ul>
               </div>
-              <label className="check adm-clear-stock">
-                <input type="checkbox" checked={restore} onChange={(e) => setRestore(e.target.checked)} />
-                <span>Put the sold items back into stock{info.stockMoves > 0 && <span className="adm-muted"> ({n(info.stockMoves, 'stock change')} from sales undone)</span>}</span>
-              </label>
-              <p className="hint">{restore
-                ? 'Stock goes back to what it would be if these sales never happened.'
-                : 'Untick if the shop has already counted its stock after testing: stock stays as it is now.'}</p>
-              <Field label={<>Type <strong>{shop.name}</strong> to confirm</>}>
-                <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} />
-              </Field>
-            </>
-          )}
-          <div className="actions">
-            <button type="button" onClick={onClose}>Cancel</button>
-            {info.sales + info.refunds + info.debtPayments + info.shifts + info.heldSales + info.customersOwing + info.stockMoves > 0 && (
-              <button className="danger" disabled={!matches || busy}>{busy ? 'Clearing…' : 'Clear sales data'}</button>
-            )}
-          </div>
-        </form>
-      )}
+              <div>
+                <h4>Kept</h4>
+                <ul>
+                  {dated && <li>{n(info.salesKept, 'sale')} from {longDay(before)} on, with their receipt numbers</li>}
+                  <li>Products and prices</li><li>Customers</li><li>Suppliers and deliveries</li><li>Users and passwords</li>
+                </ul>
+              </div>
+            </div>
+            <label className="check adm-clear-stock">
+              <input type="checkbox" checked={restore} onChange={(e) => setRestore(e.target.checked)} />
+              <span>Put the sold items back into stock{info.stockMoves > 0 && <span className="adm-muted"> ({n(info.stockMoves, 'stock change')} from these sales undone)</span>}</span>
+            </label>
+            <p className="hint">{restore
+              ? 'Stock goes back to what it would be if these sales never happened.'
+              : 'Untick if the shop has already counted its stock after testing: stock stays as it is now.'}</p>
+            <Field label={<>Type <strong>{shop.name}</strong> to confirm</>}>
+              <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+            </Field>
+          </>
+        )}
+        <div className="actions">
+          <button type="button" onClick={onClose}>Cancel</button>
+          {total > 0 && <button className="danger" disabled={!matches || busy || !info}>{busy ? 'Clearing…' : dated ? `Clear sales before ${longDay(before)}` : 'Clear all sales data'}</button>}
+        </div>
+      </form>
     </Modal>
   );
 }
