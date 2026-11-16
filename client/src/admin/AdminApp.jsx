@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { adminApi, hasAdminToken, setAdminToken } from './adminApi.js';
 import { Field, Modal, useToast } from '../ui.jsx';
 import { dateTime } from '../format.js';
-import { ChevronDown, CircleCheck, CirclePause, Clock, Copy, KeyRound, Lock, LogOut, Pencil, Plus, Search, Store } from 'lucide-react';
+import { ChevronDown, CircleCheck, CirclePause, Clock, Copy, KeyRound, Lock, LogOut, Pencil, Plus, Search, Store, Trash2 } from 'lucide-react';
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
 
@@ -113,7 +113,7 @@ const FILTERS = [
 ];
 const matches = (s, f) => f === 'all' || (f === 'active' && s.active) || (f === 'suspended' && !s.active) || (f === 'waiting' && Boolean(s.tempPassword));
 
-function ShopCard({ shop, onRename, onReset, onToggle }) {
+function ShopCard({ shop, onRename, onReset, onToggle, onClear }) {
   return (
     <article className={`adm-card${shop.active ? '' : ' off'}`}>
       <header>
@@ -131,6 +131,7 @@ function ShopCard({ shop, onRename, onReset, onToggle }) {
         <div className="adm-actions">
           <button type="button" onClick={onRename}><Pencil size={14} aria-hidden="true" /> Edit</button>
           <button type="button" onClick={onReset}><KeyRound size={14} aria-hidden="true" /> Reset password</button>
+          <button type="button" onClick={onClear}><Trash2 size={14} aria-hidden="true" /> Clear sales</button>
           {shop.active
             ? <button type="button" className="danger" onClick={onToggle}><CirclePause size={14} aria-hidden="true" /> Suspend</button>
             : <button type="button" className="primary" onClick={onToggle}><CircleCheck size={14} aria-hidden="true" /> Reactivate</button>}
@@ -176,6 +177,7 @@ function Shops({ admin, onOut }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
   const [pw, setPw] = useState(false);
+  const [clearing, setClearing] = useState(null);
 
   const load = useCallback(() => adminApi('/shops').then(setShops).catch((e) => toast(e.message, 'err')), [toast]);
   useEffect(() => { load(); }, [load]);
@@ -240,7 +242,7 @@ function Shops({ admin, onOut }) {
             <div className="adm-grid">
               {shown.map((s) => (
                 <ShopCard key={s.id} shop={s} onRename={() => setEditing(s)} onReset={() => setConfirm({ shop: s, action: 'reset' })}
-                  onToggle={() => setConfirm({ shop: s, action: s.active ? 'suspend' : 'reactivate' })} />
+                  onToggle={() => setConfirm({ shop: s, action: s.active ? 'suspend' : 'reactivate' })} onClear={() => setClearing(s)} />
               ))}
             </div>
           )}
@@ -249,6 +251,7 @@ function Shops({ admin, onOut }) {
       {creating && <NewShop onClose={() => setCreating(false)} onCreated={(s) => setShops((l) => [s, ...(l || [])])} />}
       {editing && <RenameShop shop={editing} onClose={() => setEditing(null)} onSaved={(s) => { replace(s); setEditing(null); }} />}
       {pw && <AdminPassword onClose={() => setPw(false)} />}
+      {clearing && <ClearSales shop={clearing} onClose={() => setClearing(null)} />}
       {confirm && (
         <Modal title={{ suspend: `Suspend ${confirm.shop.name}?`, reactivate: `Reactivate ${confirm.shop.name}?`, reset: `Reset the owner's password?` }[confirm.action]} onClose={() => setConfirm(null)}>
           <p>{{
@@ -303,6 +306,94 @@ function NewShop({ onClose, onCreated }) {
         <Field label="Notes (optional)" hint="Only you see these"><input value={f.notes} onChange={set('notes')} maxLength={300} /></Field>
         <div className="actions"><button className="primary" disabled={busy}>{busy ? 'Creating…' : 'Create shop'}</button></div>
       </form>
+    </Modal>
+  );
+}
+
+const n = (v, one, many = `${one}s`) => `${v} ${v === 1 ? one : many}`;
+
+// Wipe a shop's test sales (keeps products, customers and users). Shows what will go, then asks for the shop name.
+function ClearSales({ shop, onClose }) {
+  const toast = useToast();
+  const [info, setInfo] = useState(null);
+  const [restore, setRestore] = useState(true);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  useEffect(() => {
+    adminApi(`/shops/${shop.id}/sales-data`).then(setInfo).catch((e) => { toast(e.message, 'err'); closeRef.current(); });
+  }, [shop.id, toast]);
+
+  const matches = typed.trim().toLowerCase() === shop.name.trim().toLowerCase();
+  const submit = async (e) => {
+    e.preventDefault(); if (!matches) return;
+    setBusy(true);
+    try { setDone(await adminApi(`/shops/${shop.id}/clear-sales`, { method: 'POST', body: { confirm: typed, restoreStock: restore } })); toast(`${shop.name}: sales cleared`); }
+    catch (err) { toast(err.message, 'err'); }
+    setBusy(false);
+  };
+
+  if (done) {
+    return (
+      <Modal title="Sales cleared" onClose={onClose}>
+        <div className="adm-created"><CircleCheck size={28} aria-hidden="true" /><p>
+          Removed {n(done.sales, 'sale')}, {n(done.refunds, 'refund')}, {n(done.debtPayments, 'debt payment')} and {n(done.shifts, 'shift')}.
+          {done.customersReset > 0 && <> {n(done.customersReset, 'customer balance')} set back to 0.</>}
+          {done.productsRestocked > 0 && <> {done.piecesRestocked} pieces put back into stock across {n(done.productsRestocked, 'product')}.</>}
+          {' '}The next receipt will be R-000001.
+        </p></div>
+        <p className="hint">Anyone signed in to {shop.name} should refresh the page to see the cleared reports.</p>
+        <div className="actions"><button className="primary" onClick={onClose}>Done</button></div>
+      </Modal>
+    );
+  }
+  return (
+    <Modal title={`Clear sales for ${shop.name}?`} onClose={onClose}>
+      {!info ? <p className="hint">Checking what this shop has…</p> : (
+        <form onSubmit={submit} className="adm-clear">
+          {info.sales + info.refunds + info.debtPayments + info.shifts + info.heldSales + info.customersOwing === 0 && info.stockMoves === 0 ? (
+            <p>This shop has no sales data to clear.</p>
+          ) : (
+            <>
+              <p>For shops that tested the till before going live. <strong>This cannot be undone.</strong></p>
+              <div className="adm-clear-lists">
+                <div>
+                  <h4>Removed</h4>
+                  <ul>
+                    <li>{n(info.sales, 'sale')}{info.firstSale && <span className="adm-muted"> ({dateTime(info.firstSale)} – {dateTime(info.lastSale)})</span>}</li>
+                    <li>{n(info.refunds, 'refund')} and {n(info.creditNotes, 'credit note')}</li>
+                    <li>{n(info.debtPayments, 'debt payment')}</li>
+                    <li>{n(info.shifts, 'shift')} and {n(info.heldSales, 'held sale')}</li>
+                    <li>What {n(info.customersOwing, 'customer')} owe{info.customersOwing === 1 ? 's' : ''} (set back to 0)</li>
+                    <li>Receipt numbers restart at R-000001</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4>Kept</h4>
+                  <ul><li>Products and prices</li><li>Customers</li><li>Suppliers and deliveries</li><li>Users and passwords</li></ul>
+                </div>
+              </div>
+              <label className="check adm-clear-stock">
+                <input type="checkbox" checked={restore} onChange={(e) => setRestore(e.target.checked)} />
+                <span>Put the sold items back into stock{info.stockMoves > 0 && <span className="adm-muted"> ({n(info.stockMoves, 'stock change')} from sales undone)</span>}</span>
+              </label>
+              <p className="hint">{restore
+                ? 'Stock goes back to what it would be if these sales never happened.'
+                : 'Untick if the shop has already counted its stock after testing: stock stays as it is now.'}</p>
+              <Field label={<>Type <strong>{shop.name}</strong> to confirm</>}>
+                <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+              </Field>
+            </>
+          )}
+          <div className="actions">
+            <button type="button" onClick={onClose}>Cancel</button>
+            {info.sales + info.refunds + info.debtPayments + info.shifts + info.heldSales + info.customersOwing + info.stockMoves > 0 && (
+              <button className="danger" disabled={!matches || busy}>{busy ? 'Clearing…' : 'Clear sales data'}</button>
+            )}
+          </div>
+        </form>
+      )}
     </Modal>
   );
 }

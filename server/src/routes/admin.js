@@ -12,11 +12,12 @@ import { checkPassword } from '../lib/password.js';
 import { seal, open, tempPassword } from '../lib/secretBox.js';
 import { audit } from '../lib/audit.js';
 import { config } from '../config.js';
+import { clearShopSales, salesDataSummary } from '../lib/clearSales.js';
 
 /**
  * Platform admin: the people who run the service create shops, see an owner's temporary password until the owner
- * replaces it, rename shops, suspend / reactivate them, and reset an owner's password. They never see a shop's
- * sales, products or customers. Every action is also written to that shop's own audit log.
+ * replaces it, rename shops, suspend / reactivate them, reset an owner's password, and clear a shop's test sales.
+ * They never see a shop's sales, products or customers (only how many records a clear-out would remove). Every action is also written to that shop's own audit log.
  */
 const router = Router();
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, skipSuccessfulRequests: true, standardHeaders: true, legacyHeaders: false,
@@ -134,6 +135,27 @@ router.post('/shops/:id/reset-owner', asyncHandler(async (req, res) => {
   forgetShop(shop._id);
   audit({ req, action: 'platform.owner.reset', username: `admin:${req.admin.username}`, target: owner.username, targetId: owner._id, shop: shop._id });
   res.json(view(updated, await User.findById(owner._id).setOptions(SKIP)));
+}));
+
+// How much sales data the shop has: shown before clearing it.
+router.get('/shops/:id/sales-data', asyncHandler(async (req, res) => {
+  assertId(req.params.id);
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+  res.json(await salesDataSummary(shop._id));
+}));
+
+// Clear a shop's test sales, keeping products, customers and users. The admin must type the shop's name to confirm.
+router.post('/shops/:id/clear-sales', asyncHandler(async (req, res) => {
+  assertId(req.params.id);
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+  const typed = typeof req.body?.confirm === 'string' ? req.body.confirm.trim().toLowerCase() : '';
+  if (typed !== shop.name.trim().toLowerCase()) throw new SaleError('Type the shop name exactly to confirm');
+  const restoreStock = req.body?.restoreStock !== false;
+  const result = await clearShopSales(shop._id, { restoreStock });
+  audit({ req, action: 'platform.sales.clear', username: `admin:${req.admin.username}`, target: shop.name, targetId: shop._id, detail: { restoreStock, ...result }, shop: shop._id });
+  res.json(result);
 }));
 
 export default router;

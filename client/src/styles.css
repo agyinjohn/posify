@@ -1256,3 +1256,13 @@ img, video { max-width: 100%; }
   .daily-report .tablewrap { overflow: visible; }
   .daily-report .report-kpis { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* Admin › Clear sales */
+.adm-clear-lists { display: grid; grid-template-columns: 1.4fr 1fr; gap: .5rem 1rem; margin: .6rem 0 .8rem; font-size: .9rem; }
+.adm-clear-lists h4 { margin: 0 0 .25rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.adm-clear-lists ul { margin: 0; padding-left: 1.1rem; }
+.adm-clear-lists li { margin: .15rem 0; }
+.adm-clear-stock { white-space: normal; align-items: flex-start; font-weight: 600; }
+.adm-clear-stock input { margin-top: .2rem; }
+.adm-clear .hint { margin: .25rem 0 .8rem; }
+@media (max-width: 520px) { .adm-clear-lists { grid-template-columns: 1fr; } }
