@@ -26,16 +26,12 @@ export default function Login() {
 
   return (
     <div className="login">
-      <div className="login-brand">
-        {/* Decorative blobs */}
-        <div className="login-blob login-blob-1" aria-hidden="true" />
-        <div className="login-blob login-blob-2" aria-hidden="true" />
-        <div className="login-blob login-blob-3" aria-hidden="true" />
-
-        <div className="login-brand-inner">
-          {/* Logo mark */}
-          <div className="login-logo">
-            <svg viewBox="0 0 56 56" fill="none" aria-hidden="true">
+      <div className="login-panel">
+       <div className="login-stack">
+        {view === 'forgot' ? <ForgotPassword onBack={() => setView('login')} defaultUsername={username} /> : (<>
+        <form onSubmit={submit} className="login-card">
+          <div className="login-head">
+            <svg className="login-mark" viewBox="0 0 56 56" fill="none" aria-hidden="true">
               <rect width="56" height="56" rx="16" fill="#E3A62B" />
               <rect x="14" y="16" width="28" height="3.5" rx="1.75" fill="#17212B" />
               <rect x="14" y="24" width="28" height="3.5" rx="1.75" fill="#17212B" />
@@ -43,66 +39,18 @@ export default function Login() {
               <circle cx="40" cy="38" r="6" fill="#17212B" />
               <path d="M37.5 38l1.8 1.8 3.2-3.2" stroke="#E3A62B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          </div>
-
-          <h1>{SHOP_NAME}</h1>
-          <p className="login-tagline">Your complete point of sale — built for retail and wholesale shops.</p>
-
-          {/* Feature cards */}
-          <div className="login-features">
-            <div className="login-feat">
-              <span className="login-feat-icon">&#x26A1;</span>
-              <div>
-                <strong>Fast checkout</strong>
-                <small>Barcode scanner, search, split payments</small>
-              </div>
-            </div>
-            <div className="login-feat">
-              <span className="login-feat-icon">&#x1F4E6;</span>
-              <div>
-                <strong>Live stock</strong>
-                <small>Movements, stock takes, purchase orders</small>
-              </div>
-            </div>
-            <div className="login-feat">
-              <span className="login-feat-icon">&#x1F4CA;</span>
-              <div>
-                <strong>Reports</strong>
-                <small>Daily summary, profit, shift cash-up</small>
-              </div>
-            </div>
-            <div className="login-feat">
-              <span className="login-feat-icon">&#x1F465;</span>
-              <div>
-                <strong>Customers</strong>
-                <small>Credit accounts, statements, payments</small>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom badge */}
-          <div className="login-badge">Works offline · Installable PWA · Desktop app</div>
-        </div>
-      </div>
-
-      <div className="login-panel">
-       <div className="login-stack">
-        {view === 'forgot' ? <ForgotPassword onBack={() => setView('login')} defaultUsername={username} /> : (<>
-        <form onSubmit={submit} className="login-card">
-          <div className="login-card-header">
-            <h2>Welcome back</h2>
-            <p>Sign in to start selling</p>
+            <h1>{SHOP_NAME}</h1>
           </div>
           <div className="login-field">
             <span>Username</span>
             <input value={username} onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username" autoFocus required placeholder="your username" />
+              autoComplete="username" autoFocus required autoCapitalize="none" />
           </div>
           <div className="login-field">
             <span>Password</span>
             <div className="pw-wrap">
               <input type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password" required placeholder="••••••••" />
+                autoComplete="current-password" required />
               <button type="button" className="pw-eye" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? 'Hide password' : 'Show password'}>
                 <EyeIcon open={showPw} />
               </button>
@@ -110,14 +58,9 @@ export default function Login() {
           </div>
           {!error && notice && <div className="login-error" role="alert">{notice}</div>}
           {error && <div className="login-error" role="alert">{error}</div>}
-          <button className="login-btn" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in →'}
-          </button>
+          <button className="login-btn" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+          <button type="button" className="login-link login-forgot-link" onClick={() => setView('forgot')}>Forgot password?</button>
         </form>
-        <p className="login-forgot">
-          <button type="button" className="login-link" onClick={() => setView('forgot')}>Forgot your password?</button>
-          <span>Owners can use a recovery code. Staff: ask the owner to reset it.</span>
-        </p>
         </>)}
        </div>
       </div>
