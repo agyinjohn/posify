@@ -7,6 +7,9 @@ const productSchema = new mongoose.Schema(
     // Optional size label ("Small", "500ml", "XL"): shown after the name, e.g. "Super Star (Small)". Each size is
     // its own product with its own price and stock; leave empty for products without sizes.
     size: { type: String, trim: true, maxlength: 30, default: '' },
+    // Optional colour label ("Red", "Navy"), like size. Products with the same name that differ by size and/or colour
+    // are shown as one item with a size/colour picker at the till; each still has its own price, stock and SKU.
+    color: { type: String, trim: true, maxlength: 30, default: '' },
     sku: { type: String, required: true, trim: true, maxlength: 60 }, // unique within a shop (index below)
     // An empty barcode means "no barcode": never store '' (the per-shop unique rule counts every text value, so
     // two products with a blank barcode would clash).

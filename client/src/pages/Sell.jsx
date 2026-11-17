@@ -9,6 +9,8 @@ import { cacheProducts, getCachedProducts } from '../offlineDb.js';
 import { lineGross, packName, packPriceFor, pieceUnitPrice, unitsOf } from '../bulk.js';
 import { useOfflineSync } from '../offlineSync.js';
 import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
+import VariantPicker from '../VariantPicker.jsx';
+import { groupProducts } from '../variants.js';
 
 // Most of a product that can go in the cart: whole packs when selling by the pack, else pieces.
 const maxQty = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1 ? Math.floor(p.stock / p.unitsPerPack) : p.stock);
@@ -34,6 +36,7 @@ export default function Sell() {
   const [shift, setShift] = useState(undefined);
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
+  const [picking, setPicking] = useState(null); // a style whose size/colour is being chosen
   const searchRef = useRef(null);
 
   const loadShift = useCallback(() => {
@@ -71,7 +74,8 @@ export default function Sell() {
   const results = useMemo(() => {
     const t = search.trim().toLowerCase();
     const list = t ? products.filter((p) => [productLabel(p), p.sku, p.barcode].some((v) => v && v.toLowerCase().includes(t))) : products;
-    return list.slice(0, 60);
+    // Sizes and colours of the same product show as one card (a "style"); see variants.js.
+    return groupProducts(list, pieceUnitPrice).slice(0, 60);
   }, [products, search]);
 
   const lines = cart.filter((c) => byId.has(c.id)).map((c) => {
@@ -98,6 +102,12 @@ export default function Sell() {
       return c.map((l) => (l.id === p._id ? { ...l, qty: l.qty + 1 } : l));
     });
   };
+  // A style: with one size/colour in stock there is nothing to choose; otherwise ask.
+  const openStyle = (style) => {
+    const avail = style.variants.filter((v) => v.stock > 0);
+    if (style.variants.length === 1 && avail.length === 1) { add(avail[0]); setQ(''); return; }
+    setPicking(style);
+  };
   const setLine = (id, patch) => setCart((c) => c.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const remove = (id) => setCart((c) => c.filter((l) => l.id !== id));
 
@@ -106,8 +116,11 @@ export default function Sell() {
     const t = q.trim().toLowerCase();
     if (!t) return;
     const exact = products.find((p) => p.barcode?.toLowerCase() === t || p.sku.toLowerCase() === t);
-    const pick = exact || (results.length === 1 ? results[0] : null);
-    if (pick) { add(pick); setQ(''); } else toast('No single match. Pick from the list', 'err');
+    const only = results.length === 1 ? results[0] : null;
+    if (exact) { add(exact); setQ(''); return; }
+    if (only?.type === 'product') { add(only.product); setQ(''); return; }
+    if (only?.type === 'style') { openStyle(only); return; }
+    toast('No single match. Pick from the list', 'err');
   };
 
   const done = (sale) => {
@@ -193,13 +206,29 @@ export default function Sell() {
         </div>
 
         <ul className="plist">
-          {results.map((p) => (
+          {results.map((item) => (item.type === 'style' ? (
+            <li key={item.key}>
+              <button disabled={item.stock <= 0} onClick={() => openStyle(item)}>
+                {item.image?.url && <img className="pcard-img" src={item.image.url} alt="" loading="lazy" decoding="async" />}
+                <span className="pname">
+                  {item.name}
+                  <small className="pvariants">
+                    {[item.sizes.length ? item.sizes.slice(0, 6).join(' ') + (item.sizes.length > 6 ? ' …' : '') : null,
+                      item.colors.length ? `${item.colors.length} colour${item.colors.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}
+                  </small>
+                </span>
+                <span className="pcard-footer">
+                  <span className={`stock${item.stock <= 0 ? ' low' : ''}`}>{item.stock <= 0 ? 'Sold out' : `${qtyFmt(item.stock)} left`}</span>
+                  <span className="price">{item.minPrice !== item.maxPrice && <small>from </small>}{fmt(item.minPrice)}</span>
+                </span>
+              </button>
+            </li>
+          ) : (() => { const p = item.product; return (
             <li key={p._id}>
               <button disabled={p.stock <= 0} onClick={() => add(p)}>
                 {p.image?.url && <img className="pcard-img" src={p.image.url} alt="" loading="lazy" decoding="async" />}
                 <span className="pname">
                   {p.name}
-                  {p.size && <span className="size-chip">{p.size}</span>}
                   <small>{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack}/${p.packLabel || 'pack'}` : ''}</small>
                 </span>
                 <span className="pcard-footer">
@@ -214,7 +243,7 @@ export default function Sell() {
                 </span>
               </button>
             </li>
-          ))}
+          ); })()))}
           {results.length === 0 && (
             <li className="plist-empty">No products match "{q}".</li>
           )}
@@ -347,6 +376,10 @@ export default function Sell() {
       {showResume && <ResumeDrawer cartHasItems={cart.length > 0} onClose={() => setShowResume(false)} onResume={resumeSale} />}
       {showOpenShift && (
         <OpenShiftModal onClose={() => setShowOpenShift(false)} onOpened={(s) => { setShift(s); setShowOpenShift(false); }} />
+      )}
+      {picking && (
+        <VariantPicker style={picking} priceOf={pieceUnitPrice} onClose={() => setPicking(null)}
+          onPick={(v) => { add(v); setPicking(null); setQ(''); toast(`Added ${productLabel(v)}`); }} />
       )}
       {showCloseShift && shift && (
         <CloseShiftModal shift={shift} onClose={() => setShowCloseShift(false)}
