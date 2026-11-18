@@ -16,6 +16,8 @@ test('products sharing a name with sizes/colours become one style; plain product
     { _id: 'k', name: 'kente dress ', size: 'S', color: 'Red', stock: 1, retailPrice: 150 },
   ]);
   assert.deepEqual(items.map((i) => i.type), ['product', 'style']);
+  // One size only (e.g. "Frytol Oil" in 5L) is just a product.
+  assert.deepEqual(groupProducts([{ _id: 'o', name: 'Frytol Oil', size: '5L', stock: 2, retailPrice: 120 }]).map((i) => i.type), ['product']);
   const s = items[1];
   assert.deepEqual(s.sizes, ['S', 'M', 'L']);
   assert.deepEqual(s.colors, ['Blue', 'Red']);

@@ -28,7 +28,7 @@ export const uniqueSorted = (values, cmp) => {
 /**
  * Turn a product list into items: a plain product stays { type: 'product', product }, and products sharing a name
  * that have a size or colour become { type: 'style', key, name, variants, sizes, colors, stock, minPrice, maxPrice, image }.
- * A style with a single variant is still a style (so its size/colour shows). Order follows the first appearance.
+ * A name with only one size/colour (e.g. "Frytol Oil", 5L) stays a plain product. Order follows the first appearance.
  */
 export function groupProducts(list, priceOf = (p) => p.retailPrice) {
   const out = []; const styles = new Map();
@@ -49,7 +49,7 @@ export function groupProducts(list, priceOf = (p) => p.retailPrice) {
     s.category = s.variants[0].category;
     s.variants.sort((a, b) => compareSizes(a.size, b.size) || norm(a.color).localeCompare(norm(b.color)));
   }
-  return out;
+  return out.map((i) => (i.type === 'style' && i.variants.length === 1 ? { type: 'product', key: i.variants[0]._id, product: i.variants[0] } : i));
 }
 
 // The variant for a size + colour choice (either may be '' when the style has no sizes / no colours).

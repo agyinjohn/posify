@@ -13,6 +13,7 @@ import User from '../models/User.js';
 import { buildOverview, previousRange } from '../lib/analytics.js';
 import { packPriceFor } from '../lib/unitPrices.js';
 import { buildDailyReport, dailyCsv } from '../lib/dailyReport.js';
+import { dashboardExtras } from '../lib/dashboard.js';
 import Customer from '../models/Customer.js';
 import { productLabel } from '../lib/productLabel.js';
 
@@ -139,6 +140,28 @@ router.get('/daily-sales', asyncHandler(async (req, res) => {
     return res.send(toCsv(header, rows));
   }
   res.json(report);
+}));
+
+// Dashboard (owner's home page): the overview figures for the chosen period plus what needs attention now:
+// money customers owe, stock value, low stock, and the latest sales.
+router.get('/dashboard', asyncHandler(async (req, res) => {
+  const { start, end, from, to } = dayRange(req.query.from, req.query.to);
+  const prev = previousRange(from, to);
+  const prevStart = new Date(`${prev.from}T00:00:00.000Z`);
+  const [allSales, refunds, custPayments, products, users, owing, recent, customerCount] = await Promise.all([
+    Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(SALE_FIELDS).lean(),
+    Refund.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
+    CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
+    Product.find({}).select('name size color sku category stock costPrice retailPrice reorderLevel active image').lean(),
+    User.find({}).select('name').lean(),
+    Customer.find({ balance: { $gt: 0 } }).select('name balance').sort({ balance: -1 }).lean(),
+    Sale.find({}).sort({ createdAt: -1 }).limit(8).select('receiptNo createdAt total status customerName payments balance cashier').lean(),
+    Customer.countDocuments({}),
+  ]);
+  const sales = allSales.filter((s) => s.createdAt >= start);
+  const prevSales = allSales.filter((s) => s.createdAt < start);
+  const overview = buildOverview({ sales, prevSales, refunds, custPayments, products, users, from, to });
+  res.json({ ...dashboardExtras({ products, owing, recent, users, customerCount }), ...overview, previousRange: prev });
 }));
 
 export default router;
