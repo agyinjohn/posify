@@ -40,6 +40,7 @@ router.post('/receive', asyncHandler(async (req, res) => {
     throw new SaleError('Stock kept changing while receiving. Please try again', 409);
   }
   await StockMovement.create({ product: productId, type: 'receipt', qty, costPrice: result.unitCost, reason: typeof note === 'string' ? note.slice(0, 200) : undefined, user: req.user._id });
+  audit({ req, action: 'stock.receive', target: productLabel(result.doc), targetId: productId, detail: { qty, unitCost: result.unitCost, stock: result.doc.stock } });
   res.status(201).json(result.doc);
 }));
 
@@ -54,6 +55,7 @@ router.post('/adjust', asyncHandler(async (req, res) => {
   const updated = await Product.findOneAndUpdate(filter, { $inc: { stock: qty } }, { new: true });
   if (!updated) throw new SaleError('Product not found, or not enough stock to remove that amount', 409);
   await StockMovement.create({ product: productId, type: 'adjustment', qty, reason: reason.trim().slice(0, 200), user: req.user._id });
+  audit({ req, action: 'stock.adjust', target: productLabel(updated), targetId: productId, detail: { qty, reason: reason.trim().slice(0, 200), stock: updated.stock } });
   res.status(201).json(updated);
 }));
 

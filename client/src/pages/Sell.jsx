@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, cacheSet } from '../cache.js';
 import { useAuth } from '../auth.jsx';
@@ -25,6 +26,8 @@ export default function Sell() {
   const [products, setProducts] = useState(() => cacheGet('/products') ?? []);
   const [customers, setCustomers] = useState(() => cacheGet('/customers?q=') ?? []);
   const [q, setQ] = useState('');
+  const nav = useLocation();
+  useEffect(() => { if (nav.state?.q) setQ(nav.state.q); }, [nav.state]); // search handed over from the top bar
   const [cart, setCart] = useState([]);
   const [orderDiscount, setOrderDiscount] = useState('');
   const [paying, setPaying] = useState(false);
@@ -229,6 +232,7 @@ export default function Sell() {
                 {p.image?.url && <img className="pcard-img" src={p.image.url} alt="" loading="lazy" decoding="async" />}
                 <span className="pname">
                   {p.name}
+                  {[p.size, p.color].filter(Boolean).map((t) => <span key={t} className="size-chip">{t}</span>)}
                   <small>{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack}/${p.packLabel || 'pack'}` : ''}</small>
                 </span>
                 <span className="pcard-footer">

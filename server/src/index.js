@@ -8,6 +8,7 @@ import Shop from './models/Shop.js';
 import PlatformAdmin from './models/PlatformAdmin.js';
 import { migrateToShops } from './lib/migrate.js';
 import { checkPassword } from './lib/password.js';
+import { seedDemoShop } from './lib/seedDemoShop.js';
 
 await mongoose.connect(config.mongoUri);
 console.log('MongoDB connected');
@@ -65,6 +66,16 @@ if (process.env.RESET_OWNER_PASSWORD) {
     else console.warn('[reset] RESET_OWNER_PASSWORD is still set but was already applied. Remove it from the environment.');
   } catch (err) {
     console.error(`[reset] Owner password NOT reset: ${err.message}`);
+  }
+}
+
+// DEMO DATA: SEED_DEMO=1 fills the shop named SEED_DEMO_SHOP (default "My shop") with demo products and six weeks of
+// sales, only if it is empty. SEED_DEMO=reset replaces that shop's data on every restart. See lib/seedDemoShop.js.
+if (process.env.SEED_DEMO) {
+  try {
+    await seedDemoShop({ mode: process.env.SEED_DEMO, shopName: process.env.SEED_DEMO_SHOP || 'My shop' });
+  } catch (err) {
+    console.error(`[demo] Demo data NOT added: ${err.message}`);
   }
 }
 

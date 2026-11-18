@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { CardSkeleton, Field, Modal, RefreshIndicator, useToast } from '../ui.jsx';
@@ -14,6 +15,8 @@ export default function Products() {
   const [list, setList] = useState(() => cacheGet('/products?all=1&q='));
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
+  const nav = useLocation();
+  useEffect(() => { if (nav.state?.q) setQ(nav.state.q); }, [nav.state]); // search handed over from the top bar
   const [low, setLow] = useState(false);
   const [edit, setEdit] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -79,7 +82,7 @@ export default function Products() {
               ? <img className="product-card-img" src={p.image.url} alt="" loading="lazy" decoding="async" />
               : <div className="product-card-img placeholder" />}
             <div className="product-card-body">
-              <div className="product-card-name">{p.name}{p.size && <span className="size-chip">{p.size}</span>}{!p.active && <span className="chip chip-muted">inactive</span>}</div>
+              <div className="product-card-name">{p.name}{[p.size, p.color].filter(Boolean).map((t) => <span key={t} className="size-chip">{t}</span>)}{!p.active && <span className="chip chip-muted">inactive</span>}</div>
               <div className="product-card-sku">{p.sku}{p.category && p.category !== 'General' ? ` · ${p.category}` : ''}</div>
               <div className="product-card-prices">
                 {unitsOf(p) > 1 ? (

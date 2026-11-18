@@ -124,6 +124,10 @@ router.post('/', asyncHandler(async (req, res) => {
     throw err;
   }
 
+  audit({ req, action: 'sale.create', target: sale.receiptNo, targetId: sale._id, detail: {
+    total: sale.total, items: sale.items.length, paid: sale.payments.map((p) => `${p.method} ${p.amount}`).join(', ') || 'credit',
+    ...(sale.balance > 0 ? { onCredit: sale.balance } : {}), ...(sale.customerName ? { customer: sale.customerName } : {}),
+  } });
   res.status(201).json(serialize(sale, req.user));
 }));
 

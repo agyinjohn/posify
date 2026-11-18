@@ -39,7 +39,10 @@ export function AuthProvider({ children }) {
     setNotice('');
     signedIn(r);
   };
-  const logout = () => { setToken(''); forgetCaches(); setUser(null); };
+  const logout = () => {
+    setToken(''); forgetCaches(); setUser(null);
+    try { sessionStorage.removeItem('pos_landed'); } catch { /* private mode */ } // next sign-in opens the dashboard again
+  };
   // Changing the password signs out every other session; this one carries on with the fresh token.
   const changePassword = async (currentPassword, newPassword) => {
     const r = await api('/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } });

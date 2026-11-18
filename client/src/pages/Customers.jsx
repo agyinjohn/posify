@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api, download } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { useAuth } from '../auth.jsx';
@@ -11,6 +12,8 @@ export default function Customers() {
   const [list, setList] = useState(() => cacheGet('/customers?q='));
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
+  const nav = useLocation();
+  useEffect(() => { if (nav.state?.q) setQ(nav.state.q); }, [nav.state]); // search handed over from the top bar
   const [owing, setOwing] = useState(false);
   const [edit, setEdit] = useState(null);
   const [paying, setPaying] = useState(null);

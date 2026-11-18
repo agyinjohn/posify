@@ -3,6 +3,7 @@ import Supplier from '../models/Supplier.js';
 import { requireAuth, requireOwner } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { assertId, escapeRegex, pick } from '../lib/validate.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 router.use(requireAuth, requireOwner);
@@ -19,7 +20,9 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
-  res.status(201).json(await Supplier.create(pick(req.body, FIELDS)));
+  const supplier = await Supplier.create(pick(req.body, FIELDS));
+  audit({ req, action: 'supplier.create', target: supplier.name, targetId: supplier._id });
+  res.status(201).json(supplier);
 }));
 
 router.patch('/:id', asyncHandler(async (req, res) => {
@@ -28,6 +31,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     req.params.id, pick(req.body, [...FIELDS, 'active']), { new: true, runValidators: true },
   );
   if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
+  audit({ req, action: 'supplier.edit', target: supplier.name, targetId: supplier._id, detail: pick(req.body, [...FIELDS, 'active']) });
   res.json(supplier);
 }));
 
