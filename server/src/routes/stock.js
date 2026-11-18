@@ -73,7 +73,7 @@ router.post('/stocktake', asyncHandler(async (req, res) => {
   const { note, lines } = req.body;
   if (!Array.isArray(lines) || lines.length === 0) throw new SaleError('No lines provided');
 
-  const products = await Product.find({ active: true }).select('name size sku').lean();
+  const products = await Product.find({ active: true }).select('name size color sku').lean();
   const byId = new Map(products.map((p) => [String(p._id), p]));
 
   const seen = new Set();

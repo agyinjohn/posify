@@ -1131,3 +1131,53 @@ img, video { max-width: 100%; }
 .adm-clear-scope button { flex: 1; border: 0; border-radius: 0; font-size: .88rem; }
 .adm-clear-scope button.on { background: var(--ink); color: #fff; }
 .adm-clear-none { padding: .6rem 0; color: var(--muted); }
+
+/* Sizes and colours: till picker and style cards */
+.pname .pvariants { color: var(--indigo); font-weight: 600; }
+.price small { font-size: .7rem; font-weight: 600; color: var(--muted); }
+.vpick { display: grid; gap: 1rem; }
+.vpick-group h3 { margin: 0 0 .45rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.vpick-group h3 span { text-transform: none; letter-spacing: 0; color: var(--ink); }
+.vpick-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: .45rem; }
+.vchip { display: flex; flex-direction: column; align-items: center; gap: .1rem; min-height: 3.4rem; padding: .45rem .5rem; border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface); font-weight: 700; }
+.vchip span { font-size: .95rem; }
+.vchip small { font-size: .72rem; font-weight: 500; color: var(--muted); }
+.vchip.size span { font-size: 1.05rem; }
+.vpick .vchip.on, .vpick .vchip.on:hover { border-color: var(--ink); background: var(--ink); color: #fff; }
+.vpick .vchip.on small { color: #B9C3CD; }
+.vchip:hover:not(:disabled):not(.on) { border-color: var(--indigo); }
+.vchip:disabled { opacity: .4; text-decoration: line-through; cursor: not-allowed; }
+
+/* Sizes and colours: product form, cards and style view */
+.multi-toggle { font-weight: 700; white-space: normal; padding: .55rem .7rem; border: 1px dashed var(--line); border-radius: 8px; background: var(--paper); }
+.multi-toggle small { font-weight: 400; color: var(--muted); }
+.variant-box { display: grid; gap: .2rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.chips-input { display: grid; gap: .4rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chips:empty { display: none; }
+.chip-tag { display: inline-flex; align-items: center; gap: .2rem; padding: .2rem .25rem .2rem .6rem; border-radius: 999px; background: var(--ink); color: #fff; font-size: .85rem; font-weight: 700; }
+.chip-tag button { border: 0; background: transparent; color: #B9C3CD; min-height: 0; padding: 0 .35rem; font-size: 1rem; line-height: 1; }
+.chips-entry { display: flex; gap: .4rem; }
+.chips-entry input { flex: 1; min-width: 0; }
+.chips-quick { display: flex; flex-wrap: wrap; gap: .3rem; }
+.chips-quick button { min-height: 2rem; padding: .15rem .6rem; font-size: .82rem; border-radius: 999px; }
+.combo-list { margin-top: .4rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); max-height: 300px; overflow-y: auto; }
+.combo-head { display: flex; justify-content: space-between; gap: .5rem; padding: .45rem .7rem; font-size: .76rem; color: var(--muted); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+.combo-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .3rem .7rem; border-bottom: 1px solid var(--line); }
+.combo-row:last-child { border-bottom: 0; }
+.combo-row span { font-weight: 600; }
+.combo-row input { width: 6.5rem; min-height: 2.2rem; text-align: right; }
+.combo-row.exists { color: var(--muted); }
+.combo-row.exists small { font-size: .78rem; }
+.product-card-variants { display: grid; gap: .05rem; font-size: .76rem; color: var(--indigo); font-weight: 600; }
+.product-card-variants span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-card-price small { font-size: .72rem; font-weight: 600; color: var(--muted); }
+.style-sum { margin: 0 0 .2rem; }
+.style-setall { display: grid; grid-template-columns: 1fr 1fr auto; gap: .6rem; align-items: end; margin-top: 1rem; }
+.style-setall .field { margin: 0; }
+.style-setall button { min-height: 2.6rem; }
+tr.muted-row td { opacity: .55; }
+@media (max-width: 640px) {
+  .style-setall { grid-template-columns: 1fr 1fr; }
+  .style-setall button { grid-column: 1 / -1; }
+}

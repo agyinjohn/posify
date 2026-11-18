@@ -20,10 +20,14 @@ export const newId = () => {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 };
 
-// A product's name with its optional size, e.g. "Super Star (Small)". Mirrors server/src/lib/productLabel.js.
+// A product's name with its size and colour, e.g. "Super Star (Small)" or "Kente Dress (M, Red)".
+// Mirrors server/src/lib/productLabel.js.
 export const productLabel = (p) => {
-  const size = typeof p?.size === 'string' ? p.size.trim() : '';
-  return size ? `${p.name} (${size})` : (p?.name ?? '');
+  const t = (v) => (typeof v === 'string' ? v.trim() : '');
+  const extra = [t(p?.size), t(p?.color)].filter(Boolean).join(', ');
+  return extra ? `${p.name} (${extra})` : (p?.name ?? '');
 };
+// Colours offered when adding a product; the shop's own colours are added as they are used.
+export const COMMON_COLORS = ['Black', 'White', 'Red', 'Blue', 'Navy', 'Green', 'Yellow', 'Pink', 'Purple', 'Orange', 'Brown', 'Beige', 'Grey', 'Gold', 'Silver', 'Cream', 'Maroon', 'Multicolour'];
 // Sizes offered when adding a product; the shop's own sizes are added to the list as they are used.
-export const COMMON_SIZES = ['Small', 'Medium', 'Large', 'Extra large', 'Mini', 'Family size', '250ml', '330ml', '350ml', '500ml', '750ml', '1L', '1.5L', '2L', '5L', '100g', '200g', '250g', '400g', '500g', '1kg', '2kg', '5kg', '25kg', '50kg'];
+export const COMMON_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Small', 'Medium', 'Large', 'Extra large', 'Mini', 'Family size', '250ml', '330ml', '350ml', '500ml', '750ml', '1L', '1.5L', '2L', '5L', '100g', '200g', '250g', '400g', '500g', '1kg', '2kg', '5kg', '25kg', '50kg'];

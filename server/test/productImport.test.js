@@ -8,9 +8,9 @@ const row = (cells) => normalizeRow(cells, map);
 const mk = (o) => headers.map((h) => o[h] ?? '');
 
 test('column titles are matched loosely and unknown ones are reported', () => {
-  const m = mapHeaders(['NAME', 'Cost Per Carton', 'cost_per_ctn', 'Selling Price (GHS)', 'Qty', 'Colour']);
-  assert.deepEqual(m.recognized.map((r) => r.field), ['name', 'costPack', 'retailPiece', 'stockPieces']); // second "cost per ctn" would be a duplicate of costPack
-  assert.deepEqual(m.ignored, ['cost_per_ctn', 'Colour']);
+  const m = mapHeaders(['NAME', 'Cost Per Carton', 'cost_per_ctn', 'Selling Price (GHS)', 'Qty', 'Colour', 'Supplier ref']);
+  assert.deepEqual(m.recognized.map((r) => r.field), ['name', 'costPack', 'retailPiece', 'stockPieces', 'color']); // second "cost per ctn" would be a duplicate of costPack
+  assert.deepEqual(m.ignored, ['cost_per_ctn', 'Supplier ref']);
   assert.equal(mapHeaders(['Cost (GH₵) per piece']).recognized[0].field, 'costPiece');
 });
 

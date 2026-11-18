@@ -11,10 +11,11 @@ import { SaleError } from '../lib/pricing.js';
 import { audit } from '../lib/audit.js';
 import { productLabel } from '../lib/productLabel.js';
 import mongoose from 'mongoose';
+import { planVariants, comboKey } from '../lib/variants.js';
 import { mapHeaders, normalizeRow, planImport, summarize, applyPlan } from '../lib/productImport.js';
 
 const router = Router();
-const FIELDS = ['name', 'size', 'sku', 'barcode', 'category', 'costPrice', 'retailPrice', 'wholesalePrice', 'packRetailPrice', 'packWholesalePrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
+const FIELDS = ['name', 'size', 'color', 'sku', 'barcode', 'category', 'costPrice', 'retailPrice', 'wholesalePrice', 'packRetailPrice', 'packWholesalePrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
@@ -36,7 +37,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
   if (typeof category === 'string' && category) filter.category = category;
   if (typeof q === 'string' && q.trim()) {
     const rx = new RegExp(escapeRegex(q.trim().slice(0, 60)), 'i');
-    filter.$or = [{ name: rx }, { size: rx }, { sku: rx }, { barcode: rx }];
+    filter.$or = [{ name: rx }, { size: rx }, { color: rx }, { sku: rx }, { barcode: rx }];
   }
   if (lowStock === '1') filter.$expr = { $lte: ['$stock', '$reorderLevel'] };
   const query = Product.find(filter).sort({ name: 1 }).limit(5000).lean(); // plain objects: much cheaper to build and send
@@ -105,6 +106,39 @@ router.post('/', requireAuth, requireOwner, asyncHandler(async (req, res) => {
   }
   audit({ req, action: 'product.create', target: productLabel(product), targetId: product._id });
   res.status(201).json(product);
+}));
+
+// Several sizes / colours of one product in one go: each combination becomes its own product sharing the name,
+// category, prices and pack details. Used to add a new product with its sizes and colours, or more of them later.
+const SHARED = ['name', 'sku', 'category', 'costPrice', 'retailPrice', 'packRetailPrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
+router.post('/variants', requireAuth, requireOwner, asyncHandler(async (req, res) => {
+  const base = pick(req.body?.base || {}, SHARED);
+  dropPackPricesIfNoPack(base);
+  base.wholesalePrice = 0; base.packWholesalePrice = 0;
+  const all = await Product.find({}).select('name size color sku barcode').lean();
+  const docs = planVariants({
+    base, combos: req.body?.combos,
+    takenSkus: new Set(all.map((p) => p.sku)),
+    takenBarcodes: new Set(all.map((p) => p.barcode).filter(Boolean)),
+    existing: new Set(all.map((p) => comboKey(p.name, p.size, p.color))),
+  });
+  const created = [];
+  try {
+    for (const d of docs) {
+      // One by one with the full model checks; on any failure the ones already made are removed again.
+      created.push(await Product.create(d));
+    }
+  } catch (err) {
+    await Product.deleteMany({ _id: { $in: created.map((p) => p._id) } }).catch(() => {});
+    if (err?.code === 11000) throw new SaleError('A SKU or barcode is already in use. Try again', 409);
+    throw err;
+  }
+  const opening = created.filter((p) => p.stock > 0);
+  if (opening.length) {
+    await StockMovement.insertMany(opening.map((p) => ({ product: p._id, type: 'opening', qty: p.stock, costPrice: p.costPrice, user: req.user._id })));
+  }
+  audit({ req, action: 'product.create', target: `${base.name} (${created.length} sizes/colours)`, detail: { skus: created.map((p) => p.sku) } });
+  res.status(201).json(created);
 }));
 
 router.patch('/:id', requireAuth, requireOwner, asyncHandler(async (req, res) => {

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { CardSkeleton, Field, Modal, RefreshIndicator, useToast } from '../ui.jsx';
-import { COMMON_SIZES, fmt, productLabel, qtyFmt } from '../format.js';
+import { COMMON_COLORS, COMMON_SIZES, fmt, productLabel, qtyFmt } from '../format.js';
+import { CLOTHING_SIZES, compareSizes, groupProducts, uniqueSorted } from '../variants.js';
 import ProductImportModal from './ProductImport.jsx';
 import { packName, packPriceFor, packSpecificPrice, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
 
-const blank = { name: '', size: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', packRetailPrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
+const blank = { name: '', size: '', color: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', packRetailPrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
 
 export default function Products() {
   const toast = useToast();
@@ -16,6 +17,7 @@ export default function Products() {
   const [low, setLow] = useState(false);
   const [edit, setEdit] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [styleKey, setStyleKey] = useState(null); // a product with sizes/colours, opened to see them all
 
   const load = useCallback(() => {
     const key = `/products?all=1&q=${encodeURIComponent(q)}${low ? '&lowStock=1' : ''}`;
@@ -25,6 +27,10 @@ export default function Products() {
   useEffect(() => { load(); }, [load]);
 
   if (list === null) return <div className="page"><CardSkeleton count={12} /></div>;
+  const items = groupProducts(list);
+  const openStyle = styleKey && items.find((i) => i.key === styleKey);
+  const knownSizes = [...new Set([...COMMON_SIZES, ...list.map((x) => x.size).filter(Boolean)])];
+  const knownColors = uniqueSorted([...COMMON_COLORS, ...list.map((x) => x.color)], (a, b) => a.localeCompare(b));
   const lowCount = list.filter((p) => p.active && p.stock <= p.reorderLevel).length;
 
   return (
@@ -35,7 +41,7 @@ export default function Products() {
           <input className="search" placeholder="Search name, SKU or barcode" value={q} onChange={(e) => setQ(e.target.value)} />
           <label className="check"><input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} /> Low stock only</label>
           {lowCount > 0 && <span className="chip chip-red">{lowCount} low</span>}
-          {list.length > 0 && <span className="chip">{list.length} product{list.length !== 1 ? 's' : ''}</span>}
+          {list.length > 0 && <span className="chip">{items.length} product{items.length !== 1 ? 's' : ''}</span>}
         </div>
         <div className="toolbar-buttons">
           <button onClick={() => setImporting(true)}>Import</button>
@@ -44,7 +50,30 @@ export default function Products() {
       </div>
 
       <div className="product-grid">
-        {list.map((p) => (
+        {items.map((item) => (item.type === 'style' ? (
+          <div key={item.key} className={`product-card${item.variants.some((v) => v.active) ? '' : ' inactive'}`} onClick={() => setStyleKey(item.key)}>
+            {item.image?.url
+              ? <img className="product-card-img" src={item.image.url} alt="" loading="lazy" decoding="async" />
+              : <div className="product-card-img placeholder" />}
+            <div className="product-card-body">
+              <div className="product-card-name">{item.name}</div>
+              <div className="product-card-variants">
+                {item.sizes.length > 0 && <span>{item.sizes.join(' · ')}</span>}
+                {item.colors.length > 0 && <span>{item.colors.join(' · ')}</span>}
+              </div>
+              <div className="product-card-prices">
+                <span className="product-card-price">{item.minPrice !== item.maxPrice && <small>from </small>}{fmt(item.minPrice)}</span>
+                <span className="product-card-ws">{item.variants.length} size{item.variants.length === 1 ? '' : 's'}/colour{item.variants.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="product-card-footer">
+                <span className={`stock-badge${item.stock <= 0 ? ' out' : item.variants.some((v) => v.active && v.stock <= v.reorderLevel) ? ' low' : ''}`}>
+                  {item.stock <= 0 ? 'Out of stock' : `${qtyFmt(item.stock)} in stock`}
+                </span>
+                {item.category && item.category !== 'General' && <span className="product-card-cost">{item.category}</span>}
+              </div>
+            </div>
+          </div>
+        ) : (() => { const p = item.product; return (
           <div key={p._id} className={`product-card${p.active ? '' : ' inactive'}`} onClick={() => setEdit(p)}>
             {p.image?.url
               ? <img className="product-card-img" src={p.image.url} alt="" loading="lazy" decoding="async" />
@@ -72,7 +101,7 @@ export default function Products() {
               </div>
             </div>
           </div>
-        ))}
+        ); })()))}
         {list.length === 0 && (
           <div className="product-grid-empty">
             {q || low ? 'No products match your filters.' : 'No products yet. Add your first product.'}
@@ -81,15 +110,21 @@ export default function Products() {
       </div>
 
       {importing && <ProductImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
+      {openStyle && !edit && (
+        <StyleView style={openStyle} onClose={() => setStyleKey(null)} onEdit={(v) => setEdit(v)} onChanged={load}
+          onAddMore={() => setEdit({ ...blank, ...openStyle.variants[0], _id: undefined, size: '', color: '', sku: '', barcode: '', stock: 0, image: undefined, active: true, addingTo: openStyle })} />
+      )}
       {edit && (
         <ProductForm
-          key={edit._id || `new-${edit.name}-${edit.size}`}
+          key={edit._id || `new-${edit.name}-${edit.size}-${edit.addingTo ? 'more' : ''}`}
           p={edit}
-          sizes={[...new Set([...COMMON_SIZES, ...(list || []).map((x) => x.size).filter(Boolean)])]}
+          sizes={knownSizes}
+          colors={knownColors}
           onClose={() => setEdit(null)}
           onSaved={() => { setEdit(null); load(); }}
-          // Same product in another size: start a new product with the details copied and a blank size, SKU and stock.
-          onAddSize={(from) => setEdit({ ...blank, ...from, _id: undefined, size: '', sku: '', barcode: '', stock: 0, image: undefined, active: true })}
+          // More sizes/colours of this product: the details are copied; only the new sizes, colours and stock are asked for.
+          onAddSize={(from) => setEdit({ ...blank, ...from, _id: undefined, size: '', color: '', sku: '', barcode: '', stock: 0, image: undefined, active: true,
+            addingTo: items.find((i) => i.type === 'style' && i.variants.some((v) => v._id === from._id)) || { variants: [from] } })}
         />
       )}
     </div>
@@ -103,9 +138,97 @@ export default function Products() {
 const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
 const money = (n) => (n === null || n === undefined ? undefined : fmt(n));
 
-function ProductForm({ p, sizes = COMMON_SIZES, onClose, onSaved, onAddSize }) {
+const comboKey = (size, color) => `${(size || '').trim().toLowerCase()}|${(color || '').trim().toLowerCase()}`;
+
+// Type a value and press Enter (or comma), or tap a suggestion: each becomes a removable chip.
+function ChipsInput({ values, onChange, suggestions = [], quick = [], placeholder, listId, label }) {
+  const [text, setText] = useState('');
+  const has = (v) => values.some((x) => x.toLowerCase() === v.toLowerCase());
+  const addValue = (raw) => {
+    const parts = String(raw).split(',').map((t) => t.trim()).filter(Boolean).map((t) => t.slice(0, 30));
+    const next = [...values]; parts.forEach((t) => { if (!next.some((x) => x.toLowerCase() === t.toLowerCase())) next.push(t); });
+    onChange(next); setText('');
+  };
+  return (
+    <div className="chips-input">
+      <div className="chips">
+        {values.map((v) => (
+          <span key={v} className="chip-tag">{v}<button type="button" onClick={() => onChange(values.filter((x) => x !== v))} aria-label={`Remove ${v}`}>×</button></span>
+        ))}
+      </div>
+      <div className="chips-entry">
+        <input value={text} list={listId} placeholder={placeholder} aria-label={label} maxLength={60} autoComplete="off"
+          onChange={(e) => { const t = e.target.value; if (t.endsWith(',')) addValue(t); else setText(t); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (text.trim()) addValue(text); } }} />
+        <button type="button" onClick={() => text.trim() && addValue(text)} disabled={!text.trim()}>Add</button>
+        <datalist id={listId}>{suggestions.map((x) => <option key={x} value={x} />)}</datalist>
+      </div>
+      {quick.some((q) => !has(q)) && (
+        <div className="chips-quick">{quick.filter((q) => !has(q)).map((q) => <button type="button" key={q} onClick={() => addValue(q)}>+ {q}</button>)}</div>
+      )}
+    </div>
+  );
+}
+
+// Every size and colour of one product: tap one to edit it, set one price for all, or add more sizes/colours.
+function StyleView({ style, onClose, onEdit, onAddMore, onChanged }) {
+  const toast = useToast();
+  const [price, setPrice] = useState('');
+  const [cost, setCost] = useState('');
+  const [busy, setBusy] = useState(false);
+  const setAll = async (e) => {
+    e.preventDefault();
+    const body = {};
+    if (price !== '') body.retailPrice = Number(price);
+    if (cost !== '') body.costPrice = Number(cost);
+    if (!Object.keys(body).length) return;
+    setBusy(true);
+    try {
+      for (const v of style.variants) await api(`/products/${v._id}`, { method: 'PATCH', body });
+      cacheInvalidatePrefix('/products'); toast(`Updated ${style.variants.length} sizes/colours`); setPrice(''); setCost(''); onChanged();
+    } catch (err) { toast(err.message, 'err'); }
+    setBusy(false);
+  };
+  return (
+    <Modal title={style.name} onClose={onClose} wide>
+      <p className="hint style-sum">{style.variants.length} sizes/colours · {qtyFmt(style.stock)} in stock{style.category && style.category !== 'General' ? ` · ${style.category}` : ''}</p>
+      <div className="tablewrap">
+        <table>
+          <thead><tr><th>Size</th><th>Colour</th><th>SKU</th><th className="num">Price</th><th className="num">In stock</th></tr></thead>
+          <tbody>
+            {style.variants.map((v) => (
+              <tr key={v._id} className={`clickable${v.active ? '' : ' muted-row'}`} onClick={() => onEdit(v)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onEdit(v)}>
+                <td><strong>{v.size || '—'}</strong></td>
+                <td>{v.color || '—'}</td>
+                <td className="muted-cell">{v.sku}{!v.active && ' · hidden'}</td>
+                <td className="num">{fmt(v.retailPrice)}</td>
+                <td className={`num${v.stock <= v.reorderLevel ? ' owes' : ''}`}>{qtyFmt(v.stock)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <form className="style-setall" onSubmit={setAll}>
+        <Field label="Selling price for all (GH₵)"><input type="number" min="0" step="any" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="unchanged" /></Field>
+        <Field label="Cost for all (GH₵)"><input type="number" min="0" step="any" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="unchanged" /></Field>
+        <button disabled={busy || (price === '' && cost === '')}>{busy ? 'Saving…' : 'Apply to all'}</button>
+      </form>
+      <div className="actions">
+        <button className="primary" onClick={onAddMore}>Add sizes or colours</button>
+      </div>
+      <p className="hint">Each size/colour has its own stock: change stock on the Stock page.</p>
+    </Modal>
+  );
+}
+
+function ProductForm({ p, sizes = COMMON_SIZES, colors = COMMON_COLORS, onClose, onSaved, onAddSize }) {
   const toast = useToast();
   const isNew = !p._id;
+  const adding = p.addingTo || null; // adding more sizes/colours to an existing product
+  const [multi, setMulti] = useState(Boolean(adding));
+  const [sizeList, setSizeList] = useState([]);
+  const [colorList, setColorList] = useState([]);
+  const [comboStock, setComboStock] = useState({});
   const [f, setF] = useState(() => ({
     ...blank, ...p, barcode: p.barcode || '',
     costPrice: p.costPrice ?? '', retailPrice: p.retailPrice ?? '',
@@ -144,13 +267,44 @@ function ProductForm({ p, sizes = COMMON_SIZES, onClose, onSaved, onAddSize }) {
   const mPack = packed ? margin(retailPack, costPack) : null;
   const costMismatch = packed && num(f.costPrice) !== null && num(f.costPack) !== null && Math.abs(toPiecePrice(f.costPack, units) - Number(f.costPrice)) > 0.005;
 
+  // Sizes x colours, minus the ones this product already has.
+  const have = new Set((adding?.variants || []).map((v) => comboKey(v.size, v.color)));
+  const combos = [];
+  for (const sz of sizeList.length ? [...sizeList].sort(compareSizes) : ['']) {
+    for (const co of colorList.length ? colorList : ['']) {
+      if (sz || co) combos.push({ size: sz, color: co, key: comboKey(sz, co), exists: have.has(comboKey(sz, co)) });
+    }
+  }
+  const newCombos = combos.filter((c) => !c.exists);
+
+  const saveVariants = async () => {
+    if (newCombos.length === 0) return toast(combos.length ? 'Those sizes/colours already exist' : 'Add at least one size or colour', 'err');
+    const toPcs = (v) => (packed && stockUnit === 'pack' ? toPieces(v || 0, units) : Number(v) || 0);
+    const body = {
+      base: { name: f.name, sku: f.sku, category: f.category, costPrice: costPiece, retailPrice: retailPiece,
+        packRetailPrice: packed ? num(f.packRetailPrice) ?? 0 : 0, reorderLevel: Number(f.reorderLevel) || 0, unitsPerPack: units, packLabel: f.packLabel.trim() },
+      combos: newCombos.map((c) => ({ size: c.size, color: c.color, stock: toPcs(comboStock[c.key]) })),
+    };
+    setBusy(true);
+    try {
+      const created = await api('/products/variants', { method: 'POST', body });
+      cacheInvalidatePrefix('/products');
+      if (pendingImage && created[0]) {
+        const form = new FormData(); form.append('image', pendingImage);
+        await api(`/products/${created[0]._id}/image`, { method: 'POST', form }).catch(() => {});
+      }
+      toast(`${created.length} size${created.length === 1 ? '' : 's'}/colour${created.length === 1 ? '' : 's'} added`); onSaved();
+    } catch (err) { toast(err.message, 'err'); setBusy(false); }
+  };
+
   const save = async (e) => {
     e.preventDefault();
     if (retailPiece === null) return toast('Enter a selling price (per piece or per pack)', 'err');
     if (costPiece === null) return toast('Enter a cost (per piece or per pack)', 'err');
+    if (multi) return saveVariants();
     setBusy(true);
     const body = {
-      name: f.name, size: (f.size || '').trim(), sku: f.sku, barcode: f.barcode, category: f.category,
+      name: f.name, size: (f.size || '').trim(), color: (f.color || '').trim(), sku: f.sku, barcode: f.barcode, category: f.category,
       costPrice: costPiece, retailPrice: retailPiece,
       packRetailPrice: packed ? num(f.packRetailPrice) ?? 0 : 0,
       // Retired: the pack price is the wholesale price. Clearing these stops older products' wholesale fields
@@ -187,15 +341,58 @@ function ProductForm({ p, sizes = COMMON_SIZES, onClose, onSaved, onAddSize }) {
   );
 
   return (
-    <Modal title={isNew ? (p.name ? `Add another size of ${p.name}` : 'Add product') : `Edit ${productLabel(p)}`} onClose={onClose} wide>
+    <Modal title={adding ? `Add sizes or colours: ${p.name}` : isNew ? 'Add product' : `Edit ${productLabel(p)}`} onClose={onClose} wide>
       <form onSubmit={save} className="grid2">
-        <Field label="Name"><input value={f.name} onChange={set('name')} required /></Field>
-        <Field label="Size (optional)" hint="Only for products that come in sizes, e.g. Small or 500ml. Each size is added as its own product.">
-          <input value={f.size || ''} onChange={set('size')} list="product-sizes" maxLength={30} placeholder="No size" autoComplete="off" />
-          <datalist id="product-sizes">{sizes.map((s) => <option key={s} value={s} />)}</datalist>
+        <Field label="Name"><input value={f.name} onChange={set('name')} required readOnly={Boolean(adding)} /></Field>
+        {isNew && !adding && (
+          <label className="check span2 multi-toggle">
+            <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} />
+            <span>Comes in sizes or colours <small>(e.g. clothes, shoes)</small></span>
+          </label>
+        )}
+        {!multi && (
+          <>
+            <Field label="Size (optional)">
+              <input value={f.size || ''} onChange={set('size')} list="product-sizes" maxLength={30} placeholder="No size" autoComplete="off" />
+              <datalist id="product-sizes">{sizes.map((x) => <option key={x} value={x} />)}</datalist>
+            </Field>
+            <Field label="Colour (optional)">
+              <input value={f.color || ''} onChange={set('color')} list="product-colors" maxLength={30} placeholder="No colour" autoComplete="off" />
+              <datalist id="product-colors">{colors.map((x) => <option key={x} value={x} />)}</datalist>
+            </Field>
+          </>
+        )}
+        {multi && (
+          <div className="span2 variant-box">
+            <Field label="Sizes">
+              <ChipsInput values={sizeList} onChange={setSizeList} suggestions={sizes} quick={CLOTHING_SIZES.slice(1, 7)} placeholder="Type a size, e.g. M or 42" listId="v-sizes" label="Add a size" />
+            </Field>
+            <Field label="Colours">
+              <ChipsInput values={colorList} onChange={setColorList} suggestions={colors} placeholder="Type a colour, e.g. Red" listId="v-colors" label="Add a colour" />
+            </Field>
+            {combos.length > 0 && (
+              <div className="combo-list">
+                <div className="combo-head">
+                  <span>{newCombos.length} to add{combos.length > newCombos.length ? ` · ${combos.length - newCombos.length} already there` : ''}</span>
+                  <span>Opening stock{packed ? ` (${stockUnit === 'pack' ? `${pack}s` : 'pieces'})` : ''}</span>
+                </div>
+                {combos.map((c) => (
+                  <div key={c.key} className={`combo-row${c.exists ? ' exists' : ''}`}>
+                    <span>{[c.size, c.color].filter(Boolean).join(' · ')}</span>
+                    {c.exists ? <small>already added</small> : (
+                      <input type="number" min="0" step="any" inputMode="numeric" aria-label={`Opening stock for ${[c.size, c.color].filter(Boolean).join(' ')}`}
+                        value={comboStock[c.key] ?? ''} placeholder="0" onChange={(e) => setComboStock((m) => ({ ...m, [c.key]: e.target.value }))} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <Field label={multi ? 'SKU start (optional)' : 'SKU'} hint={multi ? 'Each size/colour gets its own code, e.g. DRESS-M-RED' : 'Short unique code to identify this product, e.g. RICE-5KG'}>
+          <input value={f.sku} onChange={set('sku')} required={!multi} />
         </Field>
-        <Field label="SKU" hint="Short unique code to identify this product, e.g. RICE-5KG"><input value={f.sku} onChange={set('sku')} required /></Field>
-        <Field label="Barcode" hint="Scan it here, or leave blank"><input value={f.barcode} onChange={set('barcode')} /></Field>
+        {!multi && <Field label="Barcode" hint="Scan it here, or leave blank"><input value={f.barcode} onChange={set('barcode')} /></Field>}
         <Field label="Category"><input value={f.category} onChange={set('category')} /></Field>
 
         {/* Pack size first, so the price fields below know what a pack is */}
@@ -229,7 +426,7 @@ function ProductForm({ p, sizes = COMMON_SIZES, onClose, onSaved, onAddSize }) {
         )}
 
         <Field label={packed ? 'Reorder level (pieces)' : 'Reorder level'} hint="Show a low-stock warning when stock drops to or below this number"><input type="number" min="0" step="any" value={f.reorderLevel} onChange={set('reorderLevel')} /></Field>
-        {isNew && (
+        {isNew && !multi && (
           <Field label={`Opening stock (${packed && stockUnit === 'pack' ? `${pack}s` : 'pieces'})`} hint={packed && stockUnit === 'pack' && Number(f.stock) > 0 ? `= ${toPieces(f.stock, units)} pieces` : undefined}>
             <input type="number" min="0" step="any" inputMode="decimal" value={f.stock} onChange={set('stock')} />
             {packed && (
@@ -240,7 +437,13 @@ function ProductForm({ p, sizes = COMMON_SIZES, onClose, onSaved, onAddSize }) {
             )}
           </Field>
         )}
-        {isNew && (
+        {multi && packed && (
+          <div className="seg stock-unit span2" role="group" aria-label="Opening stock unit">
+            <button type="button" className={stockUnit === 'pack' ? 'on' : ''} onClick={() => setStockUnit('pack')}>Stock in {pack}s</button>
+            <button type="button" className={stockUnit === 'piece' ? 'on' : ''} onClick={() => setStockUnit('piece')}>Stock in pieces</button>
+          </div>
+        )}
+        {isNew && !(adding && adding.image) && (
           <Field label="Product image (optional)" hint="JPG, PNG or WebP, up to 2 MB">
             {pendingImage && <img className="preview" src={URL.createObjectURL(pendingImage)} alt="" />}
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setPendingImage(e.target.files[0] || null)} />
@@ -254,8 +457,8 @@ function ProductForm({ p, sizes = COMMON_SIZES, onClose, onSaved, onAddSize }) {
         )}
         <div className="actions span2">
           {!isNew && <button type="button" className={p.active ? 'danger' : ''} onClick={toggleActive}>{p.active ? 'Hide from sales' : 'Make active'}</button>}
-          {!isNew && onAddSize && <button type="button" onClick={() => onAddSize(p)}>Add another size</button>}
-          <button className="primary" disabled={busy}>Save product</button>
+          {!isNew && onAddSize && <button type="button" onClick={() => onAddSize(p)}>Add sizes or colours</button>}
+          <button className="primary" disabled={busy}>{multi ? `Add ${newCombos.length || ''} size${newCombos.length === 1 ? '' : 's'}/colour${newCombos.length === 1 ? '' : 's'}`.replace('  ', ' ') : 'Save product'}</button>
         </div>
       </form>
       {!isNew && <p className="hint">Stock changes go through the Stock page so every change has a record.</p>}

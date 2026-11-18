@@ -106,7 +106,7 @@ router.get('/overview', asyncHandler(async (req, res) => {
     Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(SALE_FIELDS).lean(),
     Refund.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
     CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
-    Product.find({}).select('name size sku category stock costPrice active').lean(),
+    Product.find({}).select('name size color sku category stock costPrice active').lean(),
     User.find({}).select('name').lean(),
   ]);
   const sales = allSales.filter((s) => s.createdAt >= start);
@@ -122,7 +122,7 @@ router.get('/daily-sales', asyncHandler(async (req, res) => {
     Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(`${SALE_FIELDS} receiptNo customerName customerPhone items.packLabel`).lean(),
     Refund.find({ createdAt: { $gte: start, $lt: end } }).select('createdAt receiptNo method amount reason user').lean(),
     CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('createdAt customer method amount note user').lean(),
-    Product.find({}).select('name size sku category stock costPrice active unitsPerPack').lean(),
+    Product.find({}).select('name size color sku category stock costPrice active unitsPerPack').lean(),
     User.find({}).select('name').lean(),
   ]);
   const customerIds = [...new Set(custPayments.map((p) => String(p.customer)))];
