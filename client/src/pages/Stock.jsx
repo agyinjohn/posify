@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
+import DataTable from '../DataTable.jsx';
 import { dateTime, fmt, productLabel, qtyFmt } from '../format.js';
 import { hasPack, packName, toPieces, toPiecePrice, toPackPrice, unitsOf } from '../bulk.js';
 
@@ -65,29 +66,28 @@ export default function Stock() {
   );
 }
 
+const MOVE_LABEL = { sale: 'Sale', void: 'Void', return: 'Return', receipt: 'Received', adjustment: 'Adjustment', opening: 'Opening stock', stocktake: 'Stock take' };
+const HISTORY_COLUMNS = [
+  { key: 'createdAt', kind: 'date', label: 'When', className: 'muted-cell nowrap', render: (m) => dateTime(m.createdAt), exportValue: (m) => dateTime(m.createdAt) },
+  { key: 'product', label: 'Product', value: (m) => (m.product ? productLabel(m.product) : ''), render: (m) => <strong>{m.product ? productLabel(m.product) : ''}</strong> },
+  { key: 'sku', label: 'SKU', className: 'muted-cell', value: (m) => m.product?.sku || '' },
+  { key: 'type', label: 'Type', value: (m) => MOVE_LABEL[m.type] || m.type, render: (m) => <span className={`badge ${MOVE_TYPE_CLASS[m.type] || ''}`}>{MOVE_LABEL[m.type] || m.type}</span> },
+  { key: 'qty', label: 'Qty', align: 'num', render: (m) => <strong className={m.qty < 0 ? 'owes' : 'ok'}>{m.qty > 0 ? '+' : ''}{qtyFmt(m.qty)}</strong> },
+  { key: 'reason', label: 'Reason / note', className: 'muted-cell', render: (m) => m.reason || '–' },
+  { key: 'user', label: 'By', className: 'muted-cell', value: (m) => m.user?.name || '' },
+];
+const HISTORY_FILTERS = [
+  { key: 'type', label: 'All types', options: Object.entries(MOVE_LABEL), test: (m, v) => m.type === v },
+  { key: 'dir', label: 'In and out', options: [['in', 'Stock in'], ['out', 'Stock out']], test: (m, v) => (v === 'in' ? m.qty > 0 : m.qty < 0) },
+];
+
 function HistoryTab({ moves }) {
   return (
-    <div className="tablewrap" style={{ marginTop: '1rem' }}>
-      <table>
-        <thead>
-          <tr><th>When</th><th>Product</th><th>Type</th><th className="num">Qty</th><th>Reason / note</th><th>By</th></tr>
-        </thead>
-        <tbody>
-          {moves.map((m) => (
-            <tr key={m._id}>
-              <td className="muted-cell">{dateTime(m.createdAt)}</td>
-              <td><strong>{m.product ? productLabel(m.product) : ''}</strong></td>
-              <td><span className={`badge ${MOVE_TYPE_CLASS[m.type] || ''}`}>{m.type}</span></td>
-              <td className={`num${m.qty < 0 ? ' owes' : ' ok'}`}>
-                <strong>{m.qty > 0 ? '+' : ''}{qtyFmt(m.qty)}</strong>
-              </td>
-              <td className="muted-cell">{m.reason || '–'}</td>
-              <td className="muted-cell">{m.user?.name}</td>
-            </tr>
-          ))}
-          {moves.length === 0 && <tr><td colSpan="6" className="empty">No stock movements yet.</td></tr>}
-        </tbody>
-      </table>
+    <div style={{ marginTop: '1rem' }}>
+      <DataTable title="Stock history" exportName="stock-history" rows={moves} columns={HISTORY_COLUMNS} filters={HISTORY_FILTERS}
+        searchPlaceholder="Search product, reason or person" initialSort={{ key: 'createdAt', dir: 'desc' }}
+        emptyText="No stock movements yet." />
+      <p className="hint" style={{ marginTop: '.6rem' }}>Shows the latest 200 stock changes.</p>
     </div>
   );
 }

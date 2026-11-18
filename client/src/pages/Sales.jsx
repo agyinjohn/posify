@@ -4,6 +4,7 @@ import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import Receipt from '../Receipt.jsx';
+import DataTable from '../DataTable.jsx';
 import { dateTime, fmt, qtyFmt, todayStr, r2 } from '../format.js';
 
 const PAGE_SIZE = 200;
@@ -51,74 +52,61 @@ export default function Sales() {
     } catch (e) { toast(e.message, 'err'); }
   };
 
-  if (sales === null) return <div className="page"><div className="sales-topbar" /><TableSkeleton cols={7} rows={8} /></div>;
-
-  const completed = sales.filter((s) => s.status === 'completed' || s.status === 'partial-return');
+  const completed = (sales || []).filter((s) => s.status === 'completed' || s.status === 'partial-return');
   const totalRevenue = r2(completed.reduce((s, x) => s + x.total, 0));
   const totalCredit = r2(completed.reduce((s, x) => s + (x.balance || 0), 0));
+  const cashiers = [...new Set((sales || []).map((s) => s.cashier?.name).filter(Boolean))].sort();
+  const open = (s) => s.status === 'completed' || s.status === 'partial-return';
+  const methodsOf = (s) => (s.payments || []).map((p) => p.method);
+
+  const columns = [
+    { key: 'receiptNo', label: 'Receipt', render: (s) => <span className="receipt-no">{s.receiptNo}</span> },
+    { key: 'createdAt', kind: 'date', label: 'Time', className: 'muted-cell nowrap', render: (s) => dateTime(s.createdAt), exportValue: (s) => dateTime(s.createdAt) },
+    { key: 'cashier', label: 'Cashier', value: (s) => s.cashier?.name || '', render: (s) => s.cashier?.name || '' },
+    { key: 'customer', label: 'Customer', value: (s) => s.customerName || '', render: (s) => s.customerName || <span className="muted-cell">Walk-in</span>, exportValue: (s) => s.customerName || 'Walk-in' },
+    { key: 'paid', label: 'Paid by', value: (s) => methodsOf(s).join(', '), render: (s) => methodsOf(s).join(', ') || <span className="muted-cell">Credit</span> },
+    { key: 'total', label: 'Total', align: 'num', render: (s) => <strong>{fmt(s.total)}</strong> },
+    { key: 'balance', label: 'Credit', align: 'num', value: (s) => s.balance || 0, render: (s) => (s.balance > 0 ? <span className="owes">{fmt(s.balance)}</span> : <span className="muted-cell">–</span>) },
+    { key: 'status', label: 'Status', value: (s) => STATUS_LABEL[s.status] || s.status, render: (s) => <span className={`badge ${STATUS_CLASS[s.status] || ''}`}>{STATUS_LABEL[s.status] || s.status}</span> },
+    ...(isOwner ? [{ key: 'acts', label: '', sortable: false, export: false, render: (s) => (open(s) ? (
+      <div className="cell-actions" onClick={(e) => e.stopPropagation()}>
+        <button onClick={() => setReturning(s)}>Return</button>
+        <button className="danger" onClick={() => { setVoiding(s); setReason(''); }}>Void</button>
+      </div>
+    ) : null) }] : []),
+  ];
+  const filters = [
+    { key: 'status', label: 'All statuses', options: Object.entries(STATUS_LABEL), test: (s, v) => s.status === v },
+    { key: 'method', label: 'Any payment', options: [...METHODS.map((m) => [m, m]), ['credit', 'On credit']], test: (s, v) => (v === 'credit' ? s.balance > 0 : methodsOf(s).includes(v)) },
+    ...(cashiers.length > 1 ? [{ key: 'cashier', label: 'All cashiers', options: cashiers.map((c) => [c, c]), test: (s, v) => s.cashier?.name === v }] : []),
+  ];
 
   return (
     <div className="page">
       <RefreshIndicator refreshing={refreshing} />
-      {/* Filters + summary in one bar */}
-      <div className="sales-topbar">
-        <div className="filters">
-          <Field label="From"><input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></Field>
-          <Field label="To"><input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></Field>
-        </div>
-        {sales.length > 0 && (
-          <div className="sales-summary">
-            <div className="sales-stat"><span>Sales</span><strong>{completed.length}</strong></div>
-            <div className="sales-stat key"><span>Revenue</span><strong>{fmt(totalRevenue)}</strong></div>
-            {totalCredit > 0 && <div className="sales-stat warn"><span>On credit</span><strong>{fmt(totalCredit)}</strong></div>}
-            {sales.length !== completed.length && <div className="sales-stat"><span>Voided</span><strong>{sales.length - completed.length}</strong></div>}
-          </div>
-        )}
+      <div className="stat-row">
+        <div className="stat-chip"><span>Sales</span><strong>{completed.length}</strong></div>
+        <div className="stat-chip key"><span>Revenue</span><strong>{fmt(totalRevenue)}</strong></div>
+        {totalCredit > 0 && <div className="stat-chip warn"><span>On credit</span><strong>{fmt(totalCredit)}</strong></div>}
+        {sales && sales.length !== completed.length && <div className="stat-chip"><span>Voided</span><strong>{sales.length - completed.length}</strong></div>}
       </div>
 
-      {/* Table */}
-      <div className="tablewrap">
-        <table className="sales-table">
-          <thead>
-            <tr>
-              <th>Receipt</th>
-              <th>Time</th>
-              <th>Cashier</th>
-              <th>Customer</th>
-              <th className="num">Total</th>
-              <th className="num">Credit</th>
-              <th>Status</th>
-              {isOwner && <th></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {sales.map((s) => (
-              <tr key={s._id} className={s.status === 'voided' ? 'voided' : ''} onClick={() => setView(s)} style={{ cursor: 'pointer' }}>
-                <td><span className="receipt-no">{s.receiptNo}</span></td>
-                <td className="muted-cell">{dateTime(s.createdAt)}</td>
-                <td>{s.cashier?.name}</td>
-                <td>{s.customerName || <span className="muted-cell">Walk-in</span>}</td>
-                <td className="num"><strong>{fmt(s.total)}</strong></td>
-                <td className="num">{s.balance > 0 ? <span className="owes">{fmt(s.balance)}</span> : <span className="muted-cell">–</span>}</td>
-                <td><span className={`badge ${STATUS_CLASS[s.status] || ''}`}>{STATUS_LABEL[s.status] || s.status}</span></td>
-                {isOwner && (
-                  <td className="acts" onClick={(e) => e.stopPropagation()}>
-                    {(s.status === 'completed' || s.status === 'partial-return') && (
-                      <button className="danger" onClick={() => { setVoiding(s); setReason(''); }}>Void</button>
-                    )}
-                    {(s.status === 'completed' || s.status === 'partial-return') && (
-                      <button onClick={() => setReturning(s)}>Return</button>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-            {sales.length === 0 && (
-              <tr><td colSpan={isOwner ? 8 : 7} className="empty">No sales in this period.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {sales === null ? <TableSkeleton cols={7} rows={8} /> : (
+        <DataTable
+          title="Sales" exportName="sales" rows={sales} columns={columns} filters={filters}
+          searchPlaceholder="Search receipt, customer, cashier"
+          initialSort={{ key: 'createdAt', dir: 'desc' }}
+          onRowClick={setView} rowClass={(s) => (s.status === 'voided' ? 'voided' : '')}
+          emptyText="No sales in this period."
+          toolbar={(
+            <div className="dt-dates">
+              <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} aria-label="From" />
+              <span>to</span>
+              <input type="date" value={to} min={from} max={todayStr()} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label="To" />
+            </div>
+          )}
+        />
+      )}
 
       {hasMore && (
         <div className="actions" style={{ justifyContent: 'center' }}>

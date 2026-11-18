@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { cacheGet, swrFetch } from '../cache.js';
 import { Field, Modal, useToast } from '../ui.jsx';
+import DataTable from '../DataTable.jsx';
 import { dateTime, fmt, productLabel, qtyFmt } from '../format.js';
 
 const PO_STATUS_CLASS = { draft: '', ordered: 'badge-amber', received: 'badge-green' };
@@ -25,38 +26,29 @@ export default function Suppliers() {
 function SupplierList() {
   const toast = useToast();
   const [list, setList] = useState(() => cacheGet('/suppliers?q=') ?? []);
-  const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
 
   const load = useCallback(() => {
-    swrFetch(`/suppliers?q=${encodeURIComponent(q)}`, { onData: setList, ttlMs: 30_000 }).catch((e) => toast(e.message, 'err'));
-  }, [q, toast]);
+    swrFetch('/suppliers?q=', { onData: setList, ttlMs: 30_000 }).catch((e) => toast(e.message, 'err'));
+  }, [toast]);
   useEffect(load, [load]);
 
+  const columns = [
+    { key: 'name', label: 'Supplier', render: (x) => (
+      <div className="cell-thumb"><span className="ph">{x.name.charAt(0).toUpperCase()}</span><span><strong>{x.name}</strong>{x.notes && <small>{x.notes}</small>}</span></div>
+    ) },
+    { key: 'phone', label: 'Phone', render: (x) => x.phone || <span className="muted-cell">–</span> },
+    { key: 'email', label: 'Email', className: 'muted-cell', render: (x) => x.email || '–' },
+    { key: 'address', label: 'Address', className: 'muted-cell', render: (x) => x.address || '–' },
+    { key: 'active', label: 'Status', value: (x) => (x.active === false ? 'Inactive' : 'Active'), render: (x) => <span className={`badge ${x.active === false ? 'badge-plain' : 'badge-green'}`}>{x.active === false ? 'Inactive' : 'Active'}</span> },
+  ];
   return (
     <div style={{ marginTop: '1rem' }}>
-      <div className="page-toolbar">
-        <div className="page-toolbar-left">
-          <input className="search" placeholder="Search name or phone" value={q} onChange={(e) => setQ(e.target.value)} />
-          {list.length > 0 && <span className="chip">{list.length} supplier{list.length !== 1 ? 's' : ''}</span>}
-        </div>
-        <button className="primary" onClick={() => setEdit({ name: '', phone: '', email: '', address: '', notes: '' })}>Add supplier</button>
-      </div>
-
-      <div className="supplier-grid">
-        {list.map((s) => (
-          <div key={s._id} className="supplier-card" onClick={() => setEdit(s)}>
-            <div className="supplier-avatar">{s.name.charAt(0).toUpperCase()}</div>
-            <div className="supplier-info">
-              <div className="supplier-name">{s.name}</div>
-              {s.phone && <div className="supplier-detail">{s.phone}</div>}
-              {s.email && <div className="supplier-detail">{s.email}</div>}
-              {s.address && <div className="supplier-detail muted-cell">{s.address}</div>}
-            </div>
-          </div>
-        ))}
-        {list.length === 0 && <div className="product-grid-empty">No suppliers yet. Add your first supplier.</div>}
-      </div>
+      <DataTable title="Suppliers" exportName="suppliers" rows={list} columns={columns}
+        filters={[{ key: 'active', label: 'Active and inactive', options: [['yes', 'Active'], ['no', 'Inactive']], test: (x, v) => (v === 'yes' ? x.active !== false : x.active === false) }]}
+        searchPlaceholder="Search name, phone or email" initialSort={{ key: 'name', dir: 'asc' }}
+        onRowClick={setEdit} emptyText="No suppliers yet. Add your first supplier."
+        actions={<button className="primary" onClick={() => setEdit({ name: '', phone: '', email: '', address: '', notes: '' })}>Add supplier</button>} />
 
       {edit && <SupplierForm s={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
     </div>

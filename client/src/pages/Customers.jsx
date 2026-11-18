@@ -4,6 +4,7 @@ import { api, download } from '../api.js';
 import { cacheGet, cacheInvalidatePrefix, swrFetch } from '../cache.js';
 import { useAuth } from '../auth.jsx';
 import { Field, Modal, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
+import DataTable from '../DataTable.jsx';
 import { dateTime, fmt, METHODS, r2, todayStr } from '../format.js';
 
 export default function Customers() {
@@ -11,71 +12,63 @@ export default function Customers() {
   const toast = useToast();
   const [list, setList] = useState(() => cacheGet('/customers?q='));
   const [refreshing, setRefreshing] = useState(false);
-  const [q, setQ] = useState('');
   const nav = useLocation();
-  useEffect(() => { if (nav.state?.q) setQ(nav.state.q); }, [nav.state]); // search handed over from the top bar
-  const [owing, setOwing] = useState(false);
+  const handed = nav.state?.q || ''; // search handed over from the top bar
   const [edit, setEdit] = useState(null);
   const [paying, setPaying] = useState(null);
   const [statement, setStatement] = useState(null);
   const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(() => {
-    const key = `/customers?q=${encodeURIComponent(q)}${owing ? '&owing=1' : ''}`;
-    swrFetch(key, { onData: setList, onRefreshing: setRefreshing, ttlMs: 30_000 })
+    swrFetch('/customers?q=', { onData: setList, onRefreshing: setRefreshing, ttlMs: 30_000 })
       .catch((e) => toast(e.message, 'err'));
-  }, [q, owing, toast]);
+  }, [toast]);
   useEffect(() => { load(); }, [load]);
 
-  if (list === null) return <div className="page"><div className="page-toolbar" /><TableSkeleton cols={4} rows={8} /></div>;
-
-  const totalOwed = r2(list.reduce((s, c) => s + (c.balance || 0), 0));
-  const owingCount = list.filter((c) => c.balance > 0).length;
+  const all = list || [];
+  const totalOwed = r2(all.reduce((t, c) => t + (c.balance > 0 ? c.balance : 0), 0));
+  const owingCount = all.filter((c) => c.balance > 0).length;
+  const columns = [
+    { key: 'name', label: 'Customer', render: (c) => (
+      <div className="cell-thumb"><span className="ph">{c.name.charAt(0).toUpperCase()}</span><span><strong>{c.name}</strong><small>{c.phone || 'No phone'}</small></span></div>
+    ) },
+    { key: 'phone', label: 'Phone', className: 'muted-cell', render: (c) => c.phone || '–' },
+    { key: 'balance', label: 'Owes', align: 'num', value: (c) => c.balance || 0, render: (c) => (c.balance > 0 ? <span className="owes">{fmt(c.balance)}</span> : <span className="muted-cell">–</span>) },
+    ...(isOwner ? [{ key: 'creditLimit', label: 'Credit limit', align: 'num', value: (c) => c.creditLimit || 0, className: 'muted-cell', render: (c) => (c.creditLimit ? fmt(c.creditLimit) : 'No limit') }] : []),
+    { key: 'createdAt', kind: 'date', label: 'Added', className: 'muted-cell nowrap', render: (c) => (c.createdAt ? dateTime(c.createdAt).split(',')[0] : '–'), exportValue: (c) => (c.createdAt ? dateTime(c.createdAt) : '') },
+    { key: 'acts', label: '', sortable: false, export: false, render: (c) => (
+      <div className="cell-actions" onClick={(e) => e.stopPropagation()}>
+        {c.balance > 0 && <button onClick={() => setPaying(c)}>Record payment</button>}
+        {isOwner && <button onClick={() => setEdit(c)}>Edit</button>}
+      </div>
+    ) },
+  ];
+  const filters = [
+    { key: 'owing', label: 'Everyone', options: [['yes', 'Owes money'], ['no', 'Owes nothing'], ...(isOwner ? [['over', 'Over credit limit']] : [])],
+      test: (c, v) => (v === 'yes' ? c.balance > 0 : v === 'no' ? !(c.balance > 0) : c.creditLimit > 0 && c.balance > c.creditLimit) },
+  ];
 
   return (
     <div className="page">
       <RefreshIndicator refreshing={refreshing} />
-      <div className="page-toolbar">
-        <div className="page-toolbar-left">
-          <input className="search" placeholder="Search name or phone" value={q} onChange={(e) => setQ(e.target.value)} />
-          <label className="check"><input type="checkbox" checked={owing} onChange={(e) => setOwing(e.target.checked)} /> Owing only</label>
-          {owingCount > 0 && <span className="chip chip-red">{owingCount} owing · {fmt(totalOwed)}</span>}
-        </div>
-        {isOwner && (
-          <div style={{ display: 'flex', gap: '.5rem' }}>
-            <button onClick={() => setShowImport(true)}>Import CSV</button>
-            <button className="primary" onClick={() => setEdit({ name: '', phone: '', creditLimit: 0 })}>Add customer</button>
-          </div>
-        )}
+      <div className="stat-row">
+        <div className="stat-chip"><span>Customers</span><strong>{all.length}</strong></div>
+        <div className="stat-chip warn"><span>Owe money</span><strong>{owingCount}</strong></div>
+        <div className="stat-chip key"><span>Total owed</span><strong>{fmt(totalOwed)}</strong></div>
       </div>
-
-      <div className="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th><th>Phone</th>
-              <th className="num">Owes</th>
-              {isOwner && <th className="num">Credit limit</th>}
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((c) => (
-              <tr key={c._id} onClick={() => setStatement(c)} style={{ cursor: 'pointer' }}>
-                <td><strong>{c.name}</strong></td>
-                <td className="muted-cell">{c.phone || '–'}</td>
-                <td className="num">{c.balance > 0 ? <span className="owes">{fmt(c.balance)}</span> : <span className="muted-cell">–</span>}</td>
-                {isOwner && <td className="num muted-cell">{c.creditLimit ? fmt(c.creditLimit) : 'No limit'}</td>}
-                <td className="acts" onClick={(e) => e.stopPropagation()}>
-                  {c.balance > 0 && <button onClick={() => setPaying(c)}>Record payment</button>}
-                  {isOwner && <button onClick={() => setEdit(c)}>Edit</button>}
-                </td>
-              </tr>
-            ))}
-            {list.length === 0 && <tr><td colSpan={isOwner ? 5 : 4} className="empty">No customers found.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      {list === null ? <TableSkeleton cols={4} rows={8} /> : (
+        <DataTable
+          title="Customers" exportName="customers" rows={all} columns={columns} filters={filters}
+          searchPlaceholder="Search name or phone" searchText={(c) => `${c.name} ${c.phone || ''}`} initialSearch={handed}
+          initialSort={{ key: 'name', dir: 'asc' }} onRowClick={setStatement} emptyText="No customers yet."
+          actions={isOwner && (
+            <>
+              <button onClick={() => setShowImport(true)}>Import</button>
+              <button className="primary" onClick={() => setEdit({ name: '', phone: '', creditLimit: 0 })}>Add customer</button>
+            </>
+          )}
+        />
+      )}
 
       {edit && <CustomerForm c={edit} isOwner={isOwner} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
       {paying && <PayForm c={paying} onClose={() => setPaying(null)} onSaved={() => { setPaying(null); load(); }} />}
