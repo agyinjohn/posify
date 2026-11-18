@@ -1,6 +1,7 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { swrFetch, cacheGet } from '../cache.js';
-import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
+import { Field, Modal, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
+import DataTable from '../DataTable.jsx';
 import { dateTime, todayStr } from '../format.js';
 
 // Filters match the start of the action name (the server does a prefix match).
@@ -43,6 +44,15 @@ const tone = (a) => {
   return 'badge-plain';
 };
 // One readable line from the details (the full details open on click).
+const COLUMNS = [
+  { key: 'createdAt', kind: 'date', label: 'When', className: 'muted-cell nowrap', render: (r) => dateTime(r.createdAt), exportValue: (r) => dateTime(r.createdAt) },
+  { key: 'who', label: 'Who', value: (r) => r.user?.name ?? r.username ?? '', render: (r) => <strong>{r.user?.name ?? r.username ?? '–'}</strong> },
+  { key: 'action', label: 'What', value: (r) => label(r.action), render: (r) => <span className={`badge ${tone(r.action)}`}>{label(r.action)}</span> },
+  { key: 'target', label: 'On', render: (r) => r.target ?? <span className="muted-cell">–</span> },
+  { key: 'details', label: 'Details', value: (r) => summary(r), sortable: false, className: 'muted-cell audit-sum', render: (r) => summary(r) || '' },
+  { key: 'ip', label: 'IP', hidden: true },
+];
+
 const summary = (r) => {
   const d = r.detail;
   if (!d || typeof d !== 'object') return '';
@@ -103,34 +113,15 @@ export default function AuditLog() {
       )}
 
       {rows === undefined ? <TableSkeleton cols={5} rows={10} /> : (
-        <div className="tablewrap">
-          <table>
-            <thead><tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Details</th></tr></thead>
-            <tbody>
-              {list.map((r) => (
-                <Fragment key={r._id}>
-                  <tr className={`${r.action === 'login.fail' ? 'voided' : ''}${r.detail ? ' clickable' : ''}`}
-                    onClick={() => r.detail && setExpanded(expanded === r._id ? null : r._id)}>
-                    <td className="muted-cell nowrap">{dateTime(r.createdAt)}</td>
-                    <td><strong>{r.user?.name ?? r.username ?? '–'}</strong></td>
-                    <td><span className={`badge ${tone(r.action)}`}>{label(r.action)}</span></td>
-                    <td>{r.target ?? <span className="muted-cell">–</span>}</td>
-                    <td className="muted-cell audit-sum">{summary(r)}{r.detail && <span className="audit-more">{expanded === r._id ? ' ▲' : ' ▼'}</span>}</td>
-                  </tr>
-                  {expanded === r._id && r.detail && (
-                    <tr>
-                      <td colSpan="5" style={{ padding: 0 }}>
-                        <pre className="audit-detail">{JSON.stringify(r.detail, null, 2)}</pre>
-                        {r.ip && <p className="hint audit-ip">From {r.ip}</p>}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-              {list.length === 0 && !error && <tr><td colSpan="5" className="empty">Nothing was recorded in this period.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <DataTable title="Audit log" exportName="audit-log" rows={list} columns={COLUMNS} searchPlaceholder="Search person, action or item"
+          initialSort={{ key: 'createdAt', dir: 'desc' }} onRowClick={(r) => r.detail && setExpanded(r)}
+          rowClass={(r) => (r.action === 'login.fail' ? 'voided' : '')} emptyText="Nothing was recorded in this period." />
+      )}
+      {expanded && (
+        <Modal title={label(expanded.action)} onClose={() => setExpanded(null)}>
+          <p className="hint">{dateTime(expanded.createdAt)} · {expanded.user?.name ?? expanded.username ?? '–'}{expanded.target ? ` · ${expanded.target}` : ''}{expanded.ip ? ` · from ${expanded.ip}` : ''}</p>
+          <pre className="audit-detail">{JSON.stringify(expanded.detail, null, 2)}</pre>
+        </Modal>
       )}
     </div>
   );

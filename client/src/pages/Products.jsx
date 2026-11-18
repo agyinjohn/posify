@@ -6,6 +6,8 @@ import { CardSkeleton, Field, Modal, RefreshIndicator, useToast } from '../ui.js
 import { COMMON_COLORS, COMMON_SIZES, fmt, productLabel, qtyFmt } from '../format.js';
 import { CLOTHING_SIZES, compareSizes, groupProducts, uniqueSorted } from '../variants.js';
 import ProductImportModal from './ProductImport.jsx';
+import DataTable from '../DataTable.jsx';
+import { LayoutGrid, List, Pencil } from 'lucide-react';
 import { packName, packPriceFor, packSpecificPrice, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
 
 const blank = { name: '', size: '', color: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', packRetailPrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
@@ -21,12 +23,16 @@ export default function Products() {
   const [edit, setEdit] = useState(null);
   const [importing, setImporting] = useState(false);
   const [styleKey, setStyleKey] = useState(null); // a product with sizes/colours, opened to see them all
+  // List (table) or cards; remembered on this device.
+  const [view, setViewState] = useState(() => { try { return localStorage.getItem('pos_products_view') || 'list'; } catch { return 'list'; } });
+  const setView = (v) => { setViewState(v); try { localStorage.setItem('pos_products_view', v); } catch { /* private mode */ } };
 
   const load = useCallback(() => {
-    const key = `/products?all=1&q=${encodeURIComponent(q)}${low ? '&lowStock=1' : ''}`;
+    // The table searches and filters on its own, so it always loads the whole catalogue.
+    const key = view === 'list' ? '/products?all=1&q=' : `/products?all=1&q=${encodeURIComponent(q)}${low ? '&lowStock=1' : ''}`;
     swrFetch(key, { onData: setList, onRefreshing: setRefreshing, ttlMs: 60_000 })
       .catch((e) => toast(e.message, 'err'));
-  }, [q, low, toast]);
+  }, [q, low, view, toast]);
   useEffect(() => { load(); }, [load]);
 
   if (list === null) return <div className="page"><CardSkeleton count={12} /></div>;
@@ -35,6 +41,81 @@ export default function Products() {
   const knownSizes = [...new Set([...COMMON_SIZES, ...list.map((x) => x.size).filter(Boolean)])];
   const knownColors = uniqueSorted([...COMMON_COLORS, ...list.map((x) => x.color)], (a, b) => a.localeCompare(b));
   const lowCount = list.filter((p) => p.active && p.stock <= p.reorderLevel).length;
+  const toggle = (
+    <div className="view-toggle" role="group" aria-label="View">
+      <button type="button" className={view === 'list' ? 'on' : ''} onClick={() => setView('list')} aria-label="List" aria-pressed={view === 'list'}><List size={17} /></button>
+      <button type="button" className={view === 'grid' ? 'on' : ''} onClick={() => setView('grid')} aria-label="Cards" aria-pressed={view === 'grid'}><LayoutGrid size={17} /></button>
+    </div>
+  );
+  const setActive = async (rows, active, clear) => {
+    try {
+      for (const p of rows) if (p.active !== active) await api(`/products/${p._id}`, { method: 'PATCH', body: { active } });
+      cacheInvalidatePrefix('/products'); toast(`${rows.length} product${rows.length === 1 ? '' : 's'} ${active ? 'active' : 'hidden from sales'}`); clear(); load();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  const stockState = (p) => (p.stock <= 0 ? 'out' : p.stock <= p.reorderLevel ? 'low' : 'in');
+  const categories = [...new Set(list.map((p) => p.category || 'General'))].sort();
+  const columns = [
+    { key: 'name', label: 'Product', value: (p) => productLabel(p), render: (p) => (
+      <div className="cell-thumb">
+        {p.image?.url ? <img src={p.image.url} alt="" loading="lazy" /> : <span className="ph">{p.name.charAt(0).toUpperCase()}</span>}
+        <span><strong>{p.name}{[p.size, p.color].filter(Boolean).map((t) => <span key={t} className="size-chip">{t}</span>)}</strong>{p.barcode && <small>{p.barcode}</small>}</span>
+      </div>
+    ) },
+    { key: 'sku', label: 'SKU', className: 'muted-cell' },
+    { key: 'category', label: 'Category', value: (p) => p.category || 'General' },
+    { key: 'retailPrice', label: 'Price', align: 'num', render: (p) => (
+      <span><strong>{fmt(p.retailPrice)}</strong>{unitsOf(p) > 1 && <small className="cell-sub">{fmt(packPriceFor(p))} / {packName(p)}</small>}</span>
+    ), exportValue: (p) => p.retailPrice },
+    { key: 'pack', label: 'Pack price', align: 'num', hidden: true, value: (p) => (unitsOf(p) > 1 ? packPriceFor(p) : '') },
+    { key: 'units', label: 'Pieces per pack', align: 'num', hidden: true, value: (p) => (unitsOf(p) > 1 ? unitsOf(p) : '') },
+    { key: 'costPrice', label: 'Cost', align: 'num', className: 'muted-cell', render: (p) => fmt(p.costPrice) },
+    { key: 'stock', label: 'In stock', align: 'num', render: (p) => (
+      <span className={`stock-badge${stockState(p) === 'out' ? ' out' : stockState(p) === 'low' ? ' low' : ''}`}>{p.stock <= 0 ? 'Out' : qtyFmt(p.stock)}</span>
+    ) },
+    { key: 'active', label: 'Status', value: (p) => (p.active ? 'Active' : 'Hidden'), render: (p) => <span className={`badge ${p.active ? 'badge-green' : 'badge-plain'}`}>{p.active ? 'Active' : 'Hidden'}</span> },
+    { key: 'acts', label: '', sortable: false, export: false, render: (p) => (
+      <div className="cell-actions"><button className="icon-act" onClick={(e) => { e.stopPropagation(); setEdit(p); }} aria-label={`Edit ${productLabel(p)}`}><Pencil size={15} /></button></div>
+    ) },
+  ];
+  const filters = [
+    { key: 'category', label: 'All categories', options: categories.map((c) => [c, c]), test: (p, v) => (p.category || 'General') === v },
+    { key: 'stock', label: 'Any stock', options: [['in', 'In stock'], ['low', 'Running low'], ['out', 'Out of stock']], test: (p, v) => stockState(p) === v },
+    { key: 'active', label: 'Active and hidden', options: [['yes', 'Active'], ['no', 'Hidden']], test: (p, v) => (v === 'yes' ? p.active : !p.active) },
+  ];
+
+  if (view === 'list') {
+    return (
+      <div className="page page-wide">
+        <RefreshIndicator refreshing={refreshing} />
+        <div className="stat-row">
+          <div className="stat-chip"><span>Products</span><strong>{list.length}</strong></div>
+          <div className="stat-chip warn"><span>Low or out</span><strong>{lowCount}</strong></div>
+          <div className="stat-chip key"><span>Stock value (cost)</span><strong>{fmt(list.filter((p) => p.active).reduce((t, p) => t + Math.max(p.stock, 0) * p.costPrice, 0))}</strong></div>
+        </div>
+        <DataTable
+          title="Products" exportName="products" rows={list} columns={columns} filters={filters}
+          searchPlaceholder="Search name, SKU or barcode" searchText={(p) => `${productLabel(p)} ${p.sku} ${p.barcode || ''} ${p.category || ''}`}
+          initialSearch={nav.state?.q || ''} initialSort={{ key: 'name', dir: 'asc' }}
+          onRowClick={setEdit} rowClass={(p) => (p.active ? '' : 'muted-row')} emptyText="No products yet. Add your first product."
+          selectable bulkActions={(rows, clear) => (
+            <>
+              <button onClick={() => setActive(rows, false, clear)}>Hide from sales</button>
+              <button onClick={() => setActive(rows, true, clear)}>Make active</button>
+            </>
+          )}
+          actions={<>{toggle}<button onClick={() => setImporting(true)}>Import</button><button className="primary" onClick={() => setEdit(blank)}>Add product</button></>}
+        />
+        {importing && <ProductImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
+        {edit && (
+          <ProductForm key={edit._id || 'new'} p={edit} sizes={knownSizes} colors={knownColors}
+            onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }}
+            onAddSize={(from) => setEdit({ ...blank, ...from, _id: undefined, size: '', color: '', sku: '', barcode: '', stock: 0, image: undefined, active: true,
+              addingTo: items.find((i) => i.type === 'style' && i.variants.some((v) => v._id === from._id)) || { variants: [from] } })} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -47,6 +128,7 @@ export default function Products() {
           {list.length > 0 && <span className="chip">{items.length} product{items.length !== 1 ? 's' : ''}</span>}
         </div>
         <div className="toolbar-buttons">
+          {toggle}
           <button onClick={() => setImporting(true)}>Import</button>
           <button className="primary" onClick={() => setEdit(blank)}>Add product</button>
         </div>
