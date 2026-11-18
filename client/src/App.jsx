@@ -22,10 +22,11 @@ import { useOfflineSync } from './offlineSync.js';
 import { TableSkeleton } from './ui.jsx';
 import { cacheGet, swrFetch } from './cache.js';
 import GlobalSearch from './GlobalSearch.jsx';
+import DemoDataModal from './DemoData.jsx';
 import { startPrefetch, warmRoute } from './prefetch.js';
 import {
   ShoppingCart, Receipt, Users as UsersIcon, Package, Boxes, LayoutDashboard, Bell, PanelLeftClose, PanelLeftOpen,
-  Clock, UserCog, ClipboardList, Truck, TrendingUp, Menu, X, ChevronDown, KeyRound, ShieldCheck, LogOut,
+  Clock, UserCog, ClipboardList, Truck, TrendingUp, Menu, X, ChevronDown, KeyRound, ShieldCheck, LogOut, Sparkles,
 } from 'lucide-react';
 
 // The menu: one list drives the sidebar, the page titles and the top-bar search.
@@ -88,7 +89,7 @@ function StockBell() {
   );
 }
 
-function Topbar({ user, onQueue, logout, onMenu, onCollapse, collapsed, onChangePassword, onRecovery, recoveryAlert }) {
+function Topbar({ user, onQueue, logout, onMenu, onCollapse, collapsed, onChangePassword, onRecovery, onDemo, recoveryAlert }) {
   const { pathname } = useLocation();
   const { online } = useOfflineSync();
   const { isOwner } = useAuth();
@@ -134,6 +135,7 @@ function Topbar({ user, onQueue, logout, onMenu, onCollapse, collapsed, onChange
                     <ShieldCheck size={15} /> Recovery codes{recoveryAlert && <span className="dot-alert" title="Set up or top up your recovery codes" />}
                   </button>
                 )}
+                {isOwner && <button className="topbar-dropdown-item" onClick={() => { setOpen(false); onDemo(); }}><Sparkles size={15} /> Demo data</button>}
                 <button className="topbar-dropdown-signout" onClick={() => { setOpen(false); logout(); }}><LogOut size={15} /> Sign out</button>
               </div>
             </>
@@ -164,6 +166,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(() => readPref('pos_nav_collapsed')); // desktop: icons only
   const [showPassword, setShowPassword] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
   const [recovery, refreshRecovery] = useRecoveryStatus(Boolean(user) && user.role === 'owner' && !user.mustChangePassword);
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -235,7 +238,7 @@ export default function App() {
       <div className="shell-body">
         <Topbar user={user} onQueue={() => setShowQueue(true)} logout={logout} onMenu={() => setNavOpen(true)}
           collapsed={collapsed} onCollapse={() => setCollapsed((c) => { writePref('pos_nav_collapsed', !c); return !c; })}
-          onChangePassword={() => setShowPassword(true)} onRecovery={() => setShowRecovery(true)} recoveryAlert={recoveryNeedsAttention(recovery)} />
+          onChangePassword={() => setShowPassword(true)} onRecovery={() => setShowRecovery(true)} onDemo={() => setShowDemo(true)} recoveryAlert={recoveryNeedsAttention(recovery)} />
         <main>
           <PageHead />
           <Routes>
@@ -255,6 +258,7 @@ export default function App() {
         </main>
       </div>
       {showQueue && <QueuePanel onClose={() => setShowQueue(false)} />}
+      {showDemo && <DemoDataModal onClose={() => setShowDemo(false)} />}
       {showPassword && <ChangePasswordModal onClose={() => setShowPassword(false)} />}
       {showRecovery && <RecoveryCodesModal status={recovery} onChanged={refreshRecovery} onClose={() => { setShowRecovery(false); refreshRecovery(); }} />}
     </div>

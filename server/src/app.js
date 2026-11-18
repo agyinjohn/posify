@@ -17,6 +17,7 @@ import saleRoutes from './routes/sales.js';
 import reportRoutes from './routes/reports.js';
 import heldSaleRoutes from './routes/held-sales.js';
 import auditRoutes from './routes/audit.js';
+import demoRoutes from './routes/demo.js';
 import shiftRoutes from './routes/shifts.js';
 import supplierRoutes from './routes/suppliers.js';
 import purchaseOrderRoutes from './routes/purchase-orders.js';
@@ -49,6 +50,7 @@ export function createApp() {
   app.use('/api/reports', reportRoutes);
   app.use('/api/held-sales', heldSaleRoutes);
   app.use('/api/audit', auditRoutes);
+  app.use('/api/demo', demoRoutes);
   app.use('/api/shifts', shiftRoutes);
   app.use('/api/suppliers', supplierRoutes);
   app.use('/api/purchase-orders', purchaseOrderRoutes);

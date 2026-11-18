@@ -28,7 +28,9 @@ router.get('/', asyncHandler(async (req, res) => {
 
 router.post('/', asyncHandler(async (req, res) => {
   const data = pick(req.body, req.user.role === 'owner' ? ['name', 'phone', 'creditLimit'] : ['name', 'phone']);
-  res.status(201).json(await Customer.create(data));
+  const customer = await Customer.create(data);
+  audit({ req, action: 'customer.create', target: customer.name, targetId: customer._id, detail: pick(data, ['phone', 'creditLimit']) });
+  res.status(201).json(customer);
 }));
 
 router.patch('/:id', requireOwner, asyncHandler(async (req, res) => {
