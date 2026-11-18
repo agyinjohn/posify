@@ -102,7 +102,10 @@ function Topbar({ user, onQueue, logout, onMenu, onCollapse, collapsed, onChange
       <button className="icon-btn collapse-btn" onClick={onCollapse} aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}>
         {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
       </button>
-      <span className="topbar-title">{page?.label ?? 'Posify'}</span>
+      <div className="topbar-titles">
+        <span className="topbar-title">{page?.label ?? 'Posify'}</span>
+        {page?.sub && <span className="topbar-sub">{page.sub}</span>}
+      </div>
       <GlobalSearch pages={pages} isOwner={isOwner} />
       <div className="topbar-right">
         <span className={`topbar-status ${online ? 'online' : 'offline'}`} title={online ? 'Online' : 'Offline: sales are saved and sent later'}>
@@ -143,19 +146,6 @@ function Topbar({ user, onQueue, logout, onMenu, onCollapse, collapsed, onChange
         </div>
       </div>
     </header>
-  );
-}
-
-// Title and description at the top of each page (the Sell screen keeps the full height for selling).
-function PageHead() {
-  const { pathname } = useLocation();
-  const page = pageOf(pathname);
-  if (!page || pathname === '/' || pathname === '/dashboard') return null; // these two have their own heading
-  return (
-    <div className="page-head">
-      <h1>{page.label}</h1>
-      <p>{page.sub}</p>
-    </div>
   );
 }
 
@@ -240,7 +230,6 @@ export default function App() {
           collapsed={collapsed} onCollapse={() => setCollapsed((c) => { writePref('pos_nav_collapsed', !c); return !c; })}
           onChangePassword={() => setShowPassword(true)} onRecovery={() => setShowRecovery(true)} onDemo={() => setShowDemo(true)} recoveryAlert={recoveryNeedsAttention(recovery)} />
         <main>
-          <PageHead />
           <Routes>
             <Route path="/" element={<Sell />} />
             <Route path="/dashboard" element={lazyPage(<Dashboard />)} />
