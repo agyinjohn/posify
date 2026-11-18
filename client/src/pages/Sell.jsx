@@ -12,9 +12,14 @@ import { useOfflineSync } from '../offlineSync.js';
 import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
 import VariantPicker from '../VariantPicker.jsx';
 import { groupProducts } from '../variants.js';
+import { ChevronLeft, ChevronRight, Minus, PauseCircle, Plus, RotateCcw, Search, ShoppingCart, Trash2, UserRound, X } from 'lucide-react';
 
 // Most of a product that can go in the cart: whole packs when selling by the pack, else pieces.
 const maxQty = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1 ? Math.floor(p.stock / p.unitsPerPack) : p.stock);
+// "Only 1 box of Key Soap in stock (40 pcs)" / "Only 3 of Royal Rice in stock"
+const stockMsg = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1
+  ? `Only ${maxQty(p, 'pack')} ${packName(p)}${maxQty(p, 'pack') === 1 ? '' : 's'} of ${productLabel(p)} in stock (${qtyFmt(p.stock)} pcs). Switch to pcs to sell the rest.`
+  : `Only ${qtyFmt(p.stock)} of ${productLabel(p)} in stock`);
 
 export default function Sell() {
   const toast = useToast();
@@ -40,6 +45,10 @@ export default function Sell() {
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [picking, setPicking] = useState(null); // a style whose size/colour is being chosen
+  const [category, setCategory] = useState(''); // '' = all
+  const [saleCustomer, setSaleCustomer] = useState(''); // chosen before paying (optional)
+  const [pickCustomer, setPickCustomer] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const searchRef = useRef(null);
 
   const loadShift = useCallback(() => {
@@ -76,10 +85,17 @@ export default function Sell() {
   const search = useDeferredValue(q); // typing stays instant while a big catalogue is filtered
   const results = useMemo(() => {
     const t = search.trim().toLowerCase();
-    const list = t ? products.filter((p) => [productLabel(p), p.sku, p.barcode].some((v) => v && v.toLowerCase().includes(t))) : products;
+    const inCat = category ? products.filter((p) => (p.category || 'General') === category) : products;
+    const list = t ? inCat.filter((p) => [productLabel(p), p.sku, p.barcode].some((v) => v && v.toLowerCase().includes(t))) : inCat;
     // Sizes and colours of the same product show as one card (a "style"); see variants.js.
-    return groupProducts(list, pieceUnitPrice).slice(0, 60);
-  }, [products, search]);
+    return groupProducts(list, pieceUnitPrice).slice(0, 80);
+  }, [products, search, category]);
+  // Category tabs, biggest first.
+  const categories = useMemo(() => {
+    const m = new Map();
+    products.forEach((p) => { const c = p.category || 'General'; m.set(c, (m.get(c) || 0) + 1); });
+    return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [products]);
 
   const lines = cart.filter((c) => byId.has(c.id)).map((c) => {
     const p = byId.get(c.id);
@@ -101,7 +117,7 @@ export default function Sell() {
       // Sell by the pack only while at least one full pack is in stock.
       const defaultUnit = p.unitsPerPack > 1 && p.stock >= p.unitsPerPack ? 'pack' : 'piece';
       if (!hit) return [...c, { id: p._id, qty: 1, discount: '', unit: defaultUnit }];
-      if (hit.qty + 1 > maxQty(p, hit.unit)) { toast(`Only ${qtyFmt(p.stock)} of ${productLabel(p)} in stock`, 'err'); return c; }
+      if (hit.qty + 1 > maxQty(p, hit.unit)) { toast(stockMsg(p, hit.unit), 'err'); return c; }
       return c.map((l) => (l.id === p._id ? { ...l, qty: l.qty + 1 } : l));
     });
   };
@@ -113,6 +129,27 @@ export default function Sell() {
   };
   const setLine = (id, patch) => setCart((c) => c.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const remove = (id) => setCart((c) => c.filter((l) => l.id !== id));
+  // − / + on a line or a product card: one step in the line's unit; reaching 0 takes it out of the cart.
+  const step = (id, delta) => setCart((c) => c.flatMap((l) => {
+    if (l.id !== id) return [l];
+    const p = byId.get(id);
+    const next = r2((Number(l.qty) || 0) + delta);
+    if (next <= 0) return [];
+    if (p && next > maxQty(p, l.unit)) { toast(stockMsg(p, l.unit), 'err'); return [l]; }
+    return [{ ...l, qty: next }];
+  }));
+  const inCart = useMemo(() => new Map(cart.map((l) => [l.id, l])), [cart]);
+  const clearCart = () => { setCart([]); setOrderDiscount(''); setSaleCustomer(''); setConfirmClear(false); };
+
+  // Keyboard: F2 = search, F4 = pay.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select(); }
+      if (e.key === 'F4') { e.preventDefault(); if (total > 0 && !lines.some((l) => l.qty <= 0)) setPaying(true); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
 
   const onSearchKey = (e) => {
     if (e.key !== 'Enter') return;
@@ -127,7 +164,7 @@ export default function Sell() {
   };
 
   const done = (sale) => {
-    setPaying(false); setCartOpen(false); setReceipt(sale); setCart([]); setOrderDiscount(''); setQ('');
+    setPaying(false); setCartOpen(false); setReceipt(sale); setCart([]); setOrderDiscount(''); setQ(''); setSaleCustomer('');
     // The sale changed stock, balances and today's figures: drop stale copies so other screens refetch.
     ['/products', '/customers', '/sales', '/reports'].forEach(cacheInvalidatePrefix);
     load();
@@ -197,125 +234,154 @@ export default function Sell() {
       {/* ── Catalog ── */}
       <section className="catalog">
         <div className="catalog-top">
-          <input
-            ref={searchRef}
-            className="sell-search"
-            placeholder="🔍  Scan barcode or search name / SKU"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={onSearchKey}
-            aria-label="Search products"
-          />
+          <div className="sell-searchbox">
+            <Search size={18} aria-hidden="true" />
+            <input
+              ref={searchRef}
+              className="sell-search"
+              placeholder="Scan a barcode or search products"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={onSearchKey}
+              aria-label="Search products"
+            />
+            {q ? <button className="sell-search-clear" onClick={() => { setQ(''); searchRef.current?.focus(); }} aria-label="Clear search"><X size={16} /></button> : <kbd>F2</kbd>}
+          </div>
+          {categories.length > 1 && (
+            <div className="cat-tabs" role="tablist" aria-label="Categories">
+              <button role="tab" aria-selected={!category} className={!category ? 'on' : ''} onClick={() => setCategory('')}>All <small>{products.length}</small></button>
+              {categories.map(([c, n]) => (
+                <button key={c} role="tab" aria-selected={category === c} className={category === c ? 'on' : ''} onClick={() => setCategory(c)}>{c} <small>{n}</small></button>
+              ))}
+            </div>
+          )}
         </div>
 
         <ul className="plist">
-          {results.map((item) => (item.type === 'style' ? (
-            <li key={item.key}>
-              <button disabled={item.stock <= 0} onClick={() => openStyle(item)}>
-                {item.image?.url && <img className="pcard-img" src={item.image.url} alt="" loading="lazy" decoding="async" />}
-                <span className="pname">
-                  {item.name}
-                  <small className="pvariants">
-                    {[item.sizes.length ? item.sizes.slice(0, 6).join(' ') + (item.sizes.length > 6 ? ' …' : '') : null,
-                      item.colors.length ? `${item.colors.length} colour${item.colors.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}
-                  </small>
-                </span>
-                <span className="pcard-footer">
-                  <span className={`stock${item.stock <= 0 ? ' low' : ''}`}>{item.stock <= 0 ? 'Sold out' : `${qtyFmt(item.stock)} left`}</span>
-                  <span className="price">{item.minPrice !== item.maxPrice && <small>from </small>}{fmt(item.minPrice)}</span>
-                </span>
-              </button>
-            </li>
-          ) : (() => { const p = item.product; return (
-            <li key={p._id}>
-              <button disabled={p.stock <= 0} onClick={() => add(p)}>
-                {p.image?.url && <img className="pcard-img" src={p.image.url} alt="" loading="lazy" decoding="async" />}
-                <span className="pname">
-                  {p.name}
-                  {[p.size, p.color].filter(Boolean).map((t) => <span key={t} className="size-chip">{t}</span>)}
-                  <small>{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack}/${p.packLabel || 'pack'}` : ''}</small>
-                </span>
-                <span className="pcard-footer">
-                  <span className={`stock${p.stock <= p.reorderLevel ? ' low' : ''}`}>
-                    {p.stock <= 0 ? 'Out of stock' : `${qtyFmt(p.stock)} left`}
+          {results.map((item) => {
+            if (item.type === 'style') {
+              const count = item.variants.reduce((t, v) => t + (inCart.get(v._id) ? 1 : 0), 0);
+              return (
+                <li key={item.key} className={`pcard${count ? ' in-cart' : ''}${item.stock <= 0 ? ' out' : ''}`}>
+                  <button className="pcard-main" disabled={item.stock <= 0} onClick={() => openStyle(item)}>
+                    <span className="pcard-media">
+                      {item.image?.url ? <img src={item.image.url} alt="" loading="lazy" decoding="async" /> : <span className="pcard-initial">{item.name.charAt(0).toUpperCase()}</span>}
+                      {count > 0 && <span className="pcard-badge">{count} in cart</span>}
+                      <span className={`pcard-stock${item.stock <= 0 ? ' out' : ''}`}>{item.stock <= 0 ? 'Sold out' : `${qtyFmt(item.stock)} left`}</span>
+                    </span>
+                    <span className="pcard-cat">{item.category || 'General'}</span>
+                    <span className="pcard-name">{item.name}</span>
+                    <span className="pcard-sub">
+                      {[item.sizes.length ? item.sizes.slice(0, 5).join(' · ') + (item.sizes.length > 5 ? ' …' : '') : null,
+                        item.colors.length ? `${item.colors.length} colour${item.colors.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}
+                    </span>
+                    <span className="pcard-foot">
+                      <span className="pcard-price">{item.minPrice !== item.maxPrice && <small>from </small>}{fmt(item.minPrice)}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            }
+            const p = item.product;
+            const line = inCart.get(p._id);
+            const packed = p.unitsPerPack > 1 && p.stock >= p.unitsPerPack;
+            return (
+              <li key={p._id} className={`pcard${line ? ' in-cart' : ''}${p.stock <= 0 ? ' out' : ''}`}>
+                <button className="pcard-main" disabled={p.stock <= 0} onClick={() => add(p)}>
+                  <span className="pcard-media">
+                    {p.image?.url ? <img src={p.image.url} alt="" loading="lazy" decoding="async" /> : <span className="pcard-initial">{p.name.charAt(0).toUpperCase()}</span>}
+                    <span className={`pcard-stock${p.stock <= 0 ? ' out' : p.stock <= p.reorderLevel ? ' low' : ''}`}>{p.stock <= 0 ? 'Out of stock' : `${qtyFmt(p.stock)} left`}</span>
                   </span>
-                  <span className="price">
-                    {p.unitsPerPack > 1 && p.stock >= p.unitsPerPack
-                      ? <>{fmt(packPriceFor(p))}<small> / {packName(p)}</small></>
-                      : fmt(priceOf(p))}
+                  <span className="pcard-cat">{p.category || 'General'}</span>
+                  <span className="pcard-name">{p.name}{[p.size, p.color].filter(Boolean).map((t) => <span key={t} className="size-chip">{t}</span>)}</span>
+                  <span className="pcard-sub">{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack} per ${packName(p)}` : ''}</span>
+                  <span className="pcard-foot">
+                    <span className="pcard-price">{packed ? <>{fmt(packPriceFor(p))}<small> / {packName(p)}</small></> : fmt(priceOf(p))}</span>
                   </span>
-                </span>
-              </button>
-            </li>
-          ); })()))}
+                </button>
+                {line && (
+                  <div className="pcard-qty" aria-label={`${productLabel(p)} in cart`}>
+                    <button onClick={() => step(p._id, -1)} aria-label="One less"><Minus size={16} /></button>
+                    <span>{qtyFmt(line.qty)}{line.unit === 'pack' ? ` ${packName(p)}` : ''}</span>
+                    <button onClick={() => step(p._id, 1)} aria-label="One more"><Plus size={16} /></button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
           {results.length === 0 && (
-            <li className="plist-empty">No products match "{q}".</li>
+            <li className="plist-empty">{q ? `No products match "${q}".` : 'No products in this category.'}</li>
           )}
         </ul>
       </section>
 
-      {/* ── Cart ── */}
+      {/* ── Current sale ── */}
       <aside className="cart">
         <div className="cart-header">
-          <span className="cart-title">
-            Cart{lines.length > 0 && <span className="cart-count">{lines.length}</span>}
-          </span>
-          <div className="cart-actions">
-            <button className="cart-close" onClick={() => setCartOpen(false)} aria-label="Back to products">← Products</button>
-            <button disabled={lines.length === 0} onClick={() => setShowHold(true)}>Hold</button>
-            <button onClick={() => setShowResume(true)} style={{ position: 'relative' }}>
-              Resume{heldCount > 0 && <span className="held-badge">{heldCount}</span>}
-            </button>
-          </div>
+          <button className="cart-close" onClick={() => setCartOpen(false)} aria-label="Back to products"><ChevronLeft size={18} /> Products</button>
+          <span className="cart-title">Current sale{lines.length > 0 && <span className="cart-count">{lines.length}</span>}</span>
+          <button className="cart-clear" disabled={lines.length === 0} onClick={() => setConfirmClear(true)} aria-label="Clear the sale"><Trash2 size={16} /></button>
         </div>
 
-        {/* Same actions as the banner, kept next to Charge so they are never missed on a phone */}
+        {/* Same actions as the banner, kept next to Pay so they are never missed on a phone */}
         <div className="cart-shift">
           {shift === null && <><span>No shift is open</span><button className="primary" onClick={() => setShowOpenShift(true)}>Open shift</button></>}
           {shift && <><span>Shift open · {shift.openedBy?.name ?? shift.openedByName}</span><button onClick={() => setShowCloseShift(true)}>Close shift</button></>}
         </div>
 
+        <button className="cart-customer" onClick={() => setPickCustomer(true)}>
+          <span className="cart-customer-icon"><UserRound size={18} /></span>
+          {(() => { const c = customers.find((c) => c._id === saleCustomer); return c ? (
+            <span className="cart-customer-text"><strong>{c.name}</strong><small>{[c.phone, c.balance > 0 ? `owes ${fmt(c.balance)}` : null].filter(Boolean).join(' · ') || 'Customer'}</small></span>
+          ) : (
+            <span className="cart-customer-text"><strong>Walk-in customer</strong><small>Tap to add a customer (optional)</small></span>
+          ); })()}
+          <ChevronRight size={16} className="cart-customer-go" />
+        </button>
+
         <div className="lines">
           {lines.length === 0 && (
             <div className="cart-empty">
-              <span className="cart-empty-icon">🛒</span>
-              <p>Cart is empty</p>
-              <small>Scan or tap a product to start</small>
+              <span className="cart-empty-icon"><ShoppingCart size={34} /></span>
+              <p>No items yet</p>
+              <small>Scan a barcode or tap a product</small>
             </div>
           )}
           {lines.map((l) => (
             <div className="line" key={l.id}>
               <div className="line-top">
                 <span className="line-name">{productLabel(l.p)}</span>
-                <button className="line-remove" onClick={() => remove(l.id)} aria-label={`Remove ${productLabel(l.p)}`}>×</button>
+                <strong className="line-total">{fmt(l.total)}</strong>
               </div>
-              <div className={`line-ctrl${l.hasPack ? ' has-pack' : ''}`}>
+              <div className="line-bottom">
                 {l.hasPack && (
-                  <div className="seg" role="group" aria-label="Unit">
+                  <div className="seg line-unit" role="group" aria-label="Unit">
                     <button className={l.unit === 'pack' ? 'on' : ''} onClick={() => setLine(l.id, { unit: 'pack', qty: 1 })}>{l.p.packLabel || 'pack'}</button>
                     <button className={l.unit === 'piece' ? 'on' : ''} onClick={() => setLine(l.id, { unit: 'piece', qty: 1 })}>pcs</button>
                   </div>
                 )}
-                <input
-                  type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
-                  onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, maxQty(l.p, l.unit)) })}
-                />
-                <span className="line-meta">{l.hasPack && l.unit === 'pack' ? `${fmt(l.packPrice)} / ${packName(l.p)}` : fmt(l.price)} × {l.qty}</span>
-                <strong className="line-total">{fmt(l.total)}</strong>
+                <div className="stepper">
+                  <button onClick={() => step(l.id, -1)} aria-label="One less"><Minus size={14} /></button>
+                  <input
+                    type="number" min="0" step="any" value={l.qty} aria-label="Quantity" inputMode="decimal"
+                    onChange={(e) => setLine(l.id, { qty: Math.min(Number(e.target.value) || 0, maxQty(l.p, l.unit)) })}
+                  />
+                  <button onClick={() => step(l.id, 1)} aria-label="One more"><Plus size={14} /></button>
+                </div>
+                <span className="line-meta">× {l.hasPack && l.unit === 'pack' ? `${fmt(l.packPrice)} / ${packName(l.p)}` : fmt(l.price)}{l.hasPack && l.unit === 'pack' ? ` · ${qtyFmt(l.pieceQty)} pcs` : ''}</span>
+                <button className="line-remove" onClick={() => remove(l.id)} aria-label={`Remove ${productLabel(l.p)}`}><X size={15} /></button>
               </div>
-              {l.hasPack && l.unit === 'pack' && (
-                <div className="line-pack-hint">= {qtyFmt(l.pieceQty)} pcs</div>
-              )}
             </div>
           ))}
         </div>
 
         <div className="totals">
+          <div className="totals-row"><span>Items</span><span>{lines.length}</span></div>
           <div className="totals-row"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
           <div className="totals-row">
-            <span>Discount</span>
+            <span>Discount (GH₵)</span>
             <input
-              type="number" min="0" step="0.01" value={orderDiscount}
+              type="number" min="0" step="0.01" value={orderDiscount} placeholder="0.00" inputMode="decimal"
               onChange={(e) => setOrderDiscount(e.target.value)} aria-label="Order discount"
             />
           </div>
@@ -323,26 +389,30 @@ export default function Sell() {
             <span>Total</span>
             <strong>{fmt(total)}</strong>
           </div>
+          <div className="cart-buttons">
+            <button disabled={lines.length === 0} onClick={() => setShowHold(true)}><PauseCircle size={16} /> Hold</button>
+            <button onClick={() => setShowResume(true)} className="resume-btn"><RotateCcw size={16} /> Resume{heldCount > 0 && <span className="held-badge">{heldCount}</span>}</button>
+          </div>
           <button
             className="pay-btn"
             disabled={total <= 0 || lines.some((l) => l.qty <= 0)}
             onClick={() => setPaying(true)}
           >
-            Charge {total > 0 ? fmt(total) : ''}
+            <span>Pay {total > 0 ? fmt(total) : ''}</span><kbd>F4</kbd>
           </button>
         </div>
       </aside>
 
       {/* Mobile: sticky bar that opens the cart */}
       <button className="cart-bar" onClick={() => setCartOpen(true)} disabled={cartOpen}>
-        <span>🛒 Cart{lines.length > 0 ? ` (${lines.length})` : ''}</span>
-        <strong>{fmt(total)}</strong>
+        <span className="cart-bar-left"><ShoppingCart size={18} /> {lines.length ? `${lines.length} item${lines.length === 1 ? '' : 's'}` : 'No items'}</span>
+        <strong>{lines.length ? `View sale · ${fmt(total)}` : fmt(0)}</strong>
       </button>
 
       {/* ── Modals ── */}
       {paying && (
         <PayModal
-          total={total} customers={customers}
+          total={total} customers={customers} initialCustomer={saleCustomer}
           onClose={() => setPaying(false)}
           onCustomerAdded={(c) => setCustomers((s) => [...s, c])}
           build={(payments, customerId) => ({
@@ -365,6 +435,22 @@ export default function Sell() {
           <div className="actions">
             {!receipt._offlineQueued && <button className="primary" onClick={() => window.print()}>Print receipt</button>}
             <button onClick={() => setReceipt(null)}>New sale</button>
+          </div>
+        </Modal>
+      )}
+      {pickCustomer && (
+        <Modal title="Customer for this sale" onClose={() => setPickCustomer(false)}>
+          <CustomerPicker customers={customers} value={saleCustomer} onAdded={(c) => setCustomers((x) => [...x, c])}
+            onChange={(id) => { setSaleCustomer(id); if (id) setPickCustomer(false); }} />
+          <div className="actions"><button onClick={() => setPickCustomer(false)}>Done</button></div>
+        </Modal>
+      )}
+      {confirmClear && (
+        <Modal title="Clear this sale?" onClose={() => setConfirmClear(false)}>
+          <p>All {lines.length} item{lines.length === 1 ? '' : 's'} will be removed from the cart. Nothing is saved.</p>
+          <div className="actions">
+            <button onClick={() => setConfirmClear(false)}>Keep</button>
+            <button className="danger" onClick={clearCart}>Clear sale</button>
           </div>
         </Modal>
       )}
@@ -447,10 +533,10 @@ function ResumeDrawer({ onClose, onResume, cartHasItems }) {
   );
 }
 
-function PayModal({ total, customers, build, onDone, onClose, onCustomerAdded }) {
+function PayModal({ total, customers, initialCustomer = '', build, onDone, onClose, onCustomerAdded }) {
   const toast = useToast();
   const [rows, setRows] = useState([{ method: 'Cash', amount: String(total) }]);
-  const [customerId, setCustomerId] = useState('');
+  const [customerId, setCustomerId] = useState(initialCustomer);
   const [busy, setBusy] = useState(false);
   // One key per payment attempt: if the reply is lost and the cashier taps again, the server
   // returns the first sale instead of creating a second.
