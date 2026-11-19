@@ -15,9 +15,9 @@ const loadSettings = () => { try { return JSON.parse(localStorage.getItem(SETTIN
 export default function LabelPrinter({ products = [], catalogue = [], onClose }) {
   const toast = useToast();
   const saved = loadSettings();
-  const [rows, setRows] = useState(() => products.map((p) => ({ p, copies: 1 })));
-  const [sizeId, setSizeId] = useState(saved.sizeId || 'a4-3x8');
   const [showPrice, setShowPrice] = useState(saved.showPrice ?? true);
+  const [rows, setRows] = useState(() => products.map((p) => ({ p, copies: 1, price: saved.showPrice ?? true })));
+  const [sizeId, setSizeId] = useState(saved.sizeId || 'a4-3x8');
   const [showShop, setShowShop] = useState(saved.showShop ?? true);
   const [priceMode, setPriceMode] = useState(saved.priceMode || 'piece'); // piece | pack
   const [skip, setSkip] = useState(0);
@@ -26,7 +26,8 @@ export default function LabelPrinter({ products = [], catalogue = [], onClose })
 
   const remember = (patch) => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ sizeId, showPrice, showShop, priceMode, ...patch })); } catch { /* private mode */ } };
   const opts = {
-    shopName: SHOP_NAME, showPrice, showShop, nameOf: productLabel,
+    shopName: SHOP_NAME, showShop, nameOf: productLabel,
+    showPrice: (p) => rows.find((r) => r.p._id === p._id)?.price ?? showPrice,
     priceOf: (p) => (priceMode === 'pack' && unitsOf(p) > 1 ? `${fmt(packPriceFor(p))} / ${packName(p)}` : fmt(p.retailPrice)),
   };
   const items = rows.map((r) => ({ product: r.p, copies: r.copies }));
@@ -35,7 +36,7 @@ export default function LabelPrinter({ products = [], catalogue = [], onClose })
   const tooLong = rows.filter((r) => !barcodeFits(labelCode(r.p), size));
   const anyPacked = rows.some((r) => unitsOf(r.p) > 1);
   const preview = useMemo(() => labelsDocument(pages.slice(0, isSheet(size) ? 1 : 3), size, opts, { autoPrint: false }),
-    [pages, size, showPrice, showShop, priceMode, skip]); // eslint-disable-line react-hooks/exhaustive-deps
+    [pages, size, rows, showShop, priceMode, skip]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const matches = q.trim()
     ? catalogue.filter((p) => p.active !== false && !rows.some((r) => r.p._id === p._id)
@@ -62,7 +63,7 @@ export default function LabelPrinter({ products = [], catalogue = [], onClose })
             {matches.length > 0 && (
               <ul className="lp-matches">
                 {matches.map((p) => (
-                  <li key={p._id}><button type="button" onClick={() => { setRows((rs) => [...rs, { p, copies: 1 }]); setQ(''); }}>
+                  <li key={p._id}><button type="button" onClick={() => { setRows((rs) => [...rs, { p, copies: 1, price: showPrice }]); setQ(''); }}>
                     <strong>{productLabel(p)}</strong><small>{p.sku} · {qtyFmt(p.stock)} in stock</small>
                   </button></li>
                 ))}
@@ -72,9 +73,13 @@ export default function LabelPrinter({ products = [], catalogue = [], onClose })
 
           {rows.length === 0 ? <p className="lp-empty">Add the products you want labels for.</p> : (
             <ul className="lp-rows">
-              {rows.map(({ p, copies }) => (
+              {rows.map(({ p, copies, price }) => (
                 <li key={p._id}>
                   <span className="lp-name"><strong>{productLabel(p)}</strong><small>{labelCode(p)}{!p.barcode && ' (SKU)'}</small></span>
+                  <label className={`lp-row-price${price ? ' on' : ''}`} title={price ? 'Price is printed: untick to leave it off' : 'No price: tick to print it'}>
+                    <input type="checkbox" checked={price} onChange={(e) => setRows((rs) => rs.map((r) => (r.p._id === p._id ? { ...r, price: e.target.checked } : r)))} aria-label={`Print the price on ${productLabel(p)} labels`} />
+                    Price
+                  </label>
                   <div className="stepper">
                     <button type="button" onClick={() => setCopies(p._id, copies - 1)} aria-label="One fewer"><Minus size={14} /></button>
                     <input type="number" min="0" max="999" value={copies} onChange={(e) => setCopies(p._id, e.target.value)} aria-label={`Labels for ${productLabel(p)}`} />
@@ -103,10 +108,12 @@ export default function LabelPrinter({ products = [], catalogue = [], onClose })
             </Field>
           )}
           <div className="lp-checks">
-            <label className="check"><input type="checkbox" checked={showPrice} onChange={(e) => { setShowPrice(e.target.checked); remember({ showPrice: e.target.checked }); }} /> Price</label>
+            <label className="check"><input type="checkbox" checked={rows.length ? rows.every((r) => r.price) : showPrice}
+              ref={(el) => { if (el) el.indeterminate = rows.some((r) => r.price) && !rows.every((r) => r.price); }}
+              onChange={(e) => { const v = e.target.checked; setShowPrice(v); setRows((rs) => rs.map((r) => ({ ...r, price: v }))); remember({ showPrice: v }); }} /> Price on all labels</label>
             <label className="check"><input type="checkbox" checked={showShop} onChange={(e) => { setShowShop(e.target.checked); remember({ showShop: e.target.checked }); }} /> Shop name</label>
           </div>
-          {showPrice && anyPacked && (
+          {rows.some((r) => r.price) && anyPacked && (
             <div className="seg lp-price" role="group" aria-label="Price on the label">
               <button type="button" className={priceMode === 'piece' ? 'on' : ''} onClick={() => { setPriceMode('piece'); remember({ priceMode: 'piece' }); }}>Piece price</button>
               <button type="button" className={priceMode === 'pack' ? 'on' : ''} onClick={() => { setPriceMode('pack'); remember({ priceMode: 'pack' }); }}>Carton/box price</button>
