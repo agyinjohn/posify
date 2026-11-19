@@ -8,7 +8,7 @@ import { buildOverview, previousRange } from './analytics.js';
  * full lists: every product sold (packs and loose pieces), every sale, every refund and debt payment,
  * and the cash the drawer should have taken in.
  */
-export function buildDailyReport({ date, sales, prevSales = [], refunds = [], custPayments = [], products = [], users = [], customers = [] }) {
+export function buildDailyReport({ date, sales, prevSales = [], refunds = [], custPayments = [], expenses = [], products = [], users = [], customers = [] }) {
   const overview = buildOverview({ sales, prevSales, refunds, custPayments, products, users, from: date, to: date });
   const userName = new Map(users.map((u) => [String(u._id), u.name]));
   const customerName = new Map(customers.map((c) => [String(c._id), c.name]));
@@ -72,6 +72,11 @@ export function buildDailyReport({ date, sales, prevSales = [], refunds = [], cu
     .reduce((t, s) => t + (s.payments || []).filter((p) => p.method === 'Cash').reduce((u, p) => u + p.amount, 0), 0));
   const cashDebts = sum(custPayments.filter((p) => p.method === 'Cash'));
   const cashRefunds = sum(refunds.filter((r) => r.method === 'Cash'));
+  const cashPaidOut = sum(expenses.filter((e) => e.fromTill && e.method === 'Cash'));
+  const expenseRows = [...expenses]
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .map((e) => ({ at: e.createdAt || e.date, category: e.category, paidTo: e.paidTo || '', note: e.note || '', method: e.method, fromTill: Boolean(e.fromTill), amount: r2(e.amount), by: nameOf(e.user) }));
+  const spent = sum(expenses);
   const voided = sales.filter((s) => s.status === 'voided');
 
   return {
@@ -80,7 +85,8 @@ export function buildDailyReport({ date, sales, prevSales = [], refunds = [], cu
     totals: overview.totals, previous: overview.previous, change: overview.change,
     byHour: overview.byHour, byMethod: overview.byMethod, cashiers: overview.cashiers, byUnit: overview.byUnit,
     totalReceived: r2(overview.byMethod.reduce((t, m) => t + m.amount, 0)),
-    cash: { sales: cashSales, debts: cashDebts, refunds: cashRefunds, expected: r2(cashSales + cashDebts - cashRefunds) },
+    cash: { sales: cashSales, debts: cashDebts, refunds: cashRefunds, paidOut: cashPaidOut, expected: r2(cashSales + cashDebts - cashRefunds - cashPaidOut) },
+    expenses: expenseRows, expenseTotal: spent, netProfit: r2(overview.totals.profit - spent),
     items: itemRows, sales: saleRows, refunds: refundRows, debtPayments: debtRows,
     voided: { count: voided.length, total: r2(voided.reduce((t, s) => t + s.total, 0)) },
   };

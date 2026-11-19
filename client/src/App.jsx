@@ -16,6 +16,7 @@ import Users from './pages/Users.jsx';
 import AuditLog from './pages/AuditLog.jsx';
 import Shifts from './pages/Shifts.jsx';
 import Suppliers from './pages/Suppliers.jsx';
+import Expenses from './pages/Expenses.jsx';
 import { QueueBadge, QueuePanel } from './pages/OfflineQueue.jsx';
 import { SHOP_NAME, productLabel, qtyFmt } from './format.js';
 import { useOfflineSync } from './offlineSync.js';
@@ -26,7 +27,7 @@ import DemoDataModal from './DemoData.jsx';
 import { startPrefetch, warmRoute } from './prefetch.js';
 import {
   ShoppingCart, Receipt, Users as UsersIcon, Package, Boxes, LayoutDashboard, Bell, PanelLeftClose, PanelLeftOpen,
-  Clock, UserCog, ClipboardList, Truck, TrendingUp, Menu, X, ChevronDown, KeyRound, ShieldCheck, LogOut, Sparkles,
+  Clock, UserCog, ClipboardList, Truck, TrendingUp, Menu, X, ChevronDown, KeyRound, ShieldCheck, LogOut, Sparkles, Wallet,
 } from 'lucide-react';
 
 // The menu: one list drives the sidebar, the page titles and the top-bar search.
@@ -38,6 +39,7 @@ const NAV = [
   { group: 'Sales', items: [
     { to: '/sales', label: 'Sales', sub: 'Browse and manage transactions', icon: Receipt },
     { to: '/customers', label: 'Customers', sub: 'Accounts, credit and statements', icon: UsersIcon },
+    { to: '/expenses', label: 'Expenses', sub: 'Rent, wages, transport and other running costs', icon: Wallet },
   ] },
   { group: 'Inventory', owner: true, items: [
     { to: '/products', label: 'Products', sub: 'Catalogue, prices and images', icon: Package },
@@ -235,6 +237,7 @@ export default function App() {
             <Route path="/dashboard" element={lazyPage(<Dashboard />)} />
             <Route path="/sales" element={<Sales />} />
             <Route path="/customers" element={<Customers />} />
+            <Route path="/expenses" element={<Expenses />} />
             <Route path="/products" element={owner(<Products />)} />
             <Route path="/stock" element={owner(<Stock />)} />
             <Route path="/suppliers" element={owner(<Suppliers />)} />

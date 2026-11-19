@@ -21,6 +21,15 @@ const stockMsg = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1
   ? `Only ${maxQty(p, 'pack')} ${packName(p)}${maxQty(p, 'pack') === 1 ? '' : 's'} of ${productLabel(p)} in stock (${qtyFmt(p.stock)} pcs). Switch to pcs to sell the rest.`
   : `Only ${qtyFmt(p.stock)} of ${productLabel(p)} in stock`);
 
+// Soft tints for products without a photo, picked by category so a category's cards share a colour.
+const TINTS = [['#E7F0FC', '#1F5FAE'], ['#E4F4EA', '#157347'], ['#FDF4E3', '#9A6A0E'], ['#F3E8FD', '#6B3FA0'], ['#FDECEA', '#A3271F'], ['#E6F6F7', '#0E6E75'], ['#EEF1F4', '#3A4754']];
+const tintOf = (key) => TINTS[[...String(key || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TINTS.length];
+function Thumb({ image, name, category }) {
+  if (image) return <img className="pcard-thumb" src={image} alt="" loading="lazy" decoding="async" />;
+  const [bg, fg] = tintOf(category || name);
+  return <span className="pcard-thumb" style={{ background: bg, color: fg }}>{name.trim().slice(0, 2).toUpperCase()}</span>;
+}
+
 export default function Sell() {
   const toast = useToast();
   const { isOwner } = useAuth();
@@ -264,19 +273,20 @@ export default function Sell() {
               return (
                 <li key={item.key} className={`pcard${count ? ' in-cart' : ''}${item.stock <= 0 ? ' out' : ''}`}>
                   <button className="pcard-main" disabled={item.stock <= 0} onClick={() => openStyle(item)}>
-                    <span className="pcard-media">
-                      {item.image?.url ? <img src={item.image.url} alt="" loading="lazy" decoding="async" /> : <span className="pcard-initial">{item.name.charAt(0).toUpperCase()}</span>}
-                      {count > 0 && <span className="pcard-badge">{count} in cart</span>}
-                      <span className={`pcard-stock${item.stock <= 0 ? ' out' : ''}`}>{item.stock <= 0 ? 'Sold out' : `${qtyFmt(item.stock)} left`}</span>
-                    </span>
-                    <span className="pcard-cat">{item.category || 'General'}</span>
-                    <span className="pcard-name">{item.name}</span>
-                    <span className="pcard-sub">
-                      {[item.sizes.length ? item.sizes.slice(0, 5).join(' · ') + (item.sizes.length > 5 ? ' …' : '') : null,
-                        item.colors.length ? `${item.colors.length} colour${item.colors.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}
+                    <span className="pcard-top">
+                      <Thumb image={item.image?.url} name={item.name} category={item.category} />
+                      <span className="pcard-text">
+                        <span className="pcard-name">{item.name}</span>
+                        <span className="pcard-sub">
+                          {[item.sizes.length ? item.sizes.slice(0, 5).join(' · ') + (item.sizes.length > 5 ? ' …' : '') : null,
+                            item.colors.length ? `${item.colors.length} colour${item.colors.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
                     </span>
                     <span className="pcard-foot">
                       <span className="pcard-price">{item.minPrice !== item.maxPrice && <small>from </small>}{fmt(item.minPrice)}</span>
+                      {count > 0 ? <span className="pcard-stock incart">{count} in sale</span>
+                        : <span className={`pcard-stock${item.stock <= 0 ? ' out' : ''}`}>{item.stock <= 0 ? 'Sold out' : `${qtyFmt(item.stock)} left`}</span>}
                     </span>
                   </button>
                 </li>
@@ -288,22 +298,23 @@ export default function Sell() {
             return (
               <li key={p._id} className={`pcard${line ? ' in-cart' : ''}${p.stock <= 0 ? ' out' : ''}`}>
                 <button className="pcard-main" disabled={p.stock <= 0} onClick={() => add(p)}>
-                  <span className="pcard-media">
-                    {p.image?.url ? <img src={p.image.url} alt="" loading="lazy" decoding="async" /> : <span className="pcard-initial">{p.name.charAt(0).toUpperCase()}</span>}
-                    <span className={`pcard-stock${p.stock <= 0 ? ' out' : p.stock <= p.reorderLevel ? ' low' : ''}`}>{p.stock <= 0 ? 'Out of stock' : `${qtyFmt(p.stock)} left`}</span>
+                  <span className="pcard-top">
+                    <Thumb image={p.image?.url} name={p.name} category={p.category} />
+                    <span className="pcard-text">
+                      <span className="pcard-name">{p.name}</span>
+                      <span className="pcard-sub">{[p.size, p.color].filter(Boolean).join(' · ') || (p.unitsPerPack > 1 ? `${p.unitsPerPack} per ${packName(p)}` : p.category || '')}</span>
+                    </span>
                   </span>
-                  <span className="pcard-cat">{p.category || 'General'}</span>
-                  <span className="pcard-name">{p.name}{[p.size, p.color].filter(Boolean).map((t) => <span key={t} className="size-chip">{t}</span>)}</span>
-                  <span className="pcard-sub">{p.sku}{p.unitsPerPack > 1 ? ` · ${p.unitsPerPack} per ${packName(p)}` : ''}</span>
                   <span className="pcard-foot">
-                    <span className="pcard-price">{packed ? <>{fmt(packPriceFor(p))}<small> / {packName(p)}</small></> : fmt(priceOf(p))}</span>
+                    <span className="pcard-price">{packed ? <>{fmt(packPriceFor(p))}<small> /{packName(p)}</small></> : fmt(priceOf(p))}</span>
+                    <span className={`pcard-stock${p.stock <= 0 ? ' out' : p.stock <= p.reorderLevel ? ' low' : ''}`}>{p.stock <= 0 ? 'Out' : `${qtyFmt(p.stock)} left`}</span>
                   </span>
                 </button>
                 {line && (
                   <div className="pcard-qty" aria-label={`${productLabel(p)} in cart`}>
-                    <button onClick={() => step(p._id, -1)} aria-label="One less"><Minus size={16} /></button>
+                    <button onClick={() => step(p._id, -1)} aria-label="One less"><Minus size={15} /></button>
                     <span>{qtyFmt(line.qty)}{line.unit === 'pack' ? ` ${packName(p)}` : ''}</span>
-                    <button onClick={() => step(p._id, 1)} aria-label="One more"><Plus size={16} /></button>
+                    <button onClick={() => step(p._id, 1)} aria-label="One more"><Plus size={15} /></button>
                   </div>
                 )}
               </li>

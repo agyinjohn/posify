@@ -15,6 +15,8 @@ import { packPriceFor } from '../lib/unitPrices.js';
 import { buildDailyReport, dailyCsv } from '../lib/dailyReport.js';
 import { dashboardExtras } from '../lib/dashboard.js';
 import Customer from '../models/Customer.js';
+import Expense from '../models/Expense.js';
+import { profitAndLoss, sumExpenses, byCategory } from '../lib/expenses.js';
 import { productLabel } from '../lib/productLabel.js';
 
 const router = Router();
@@ -119,18 +121,19 @@ router.get('/overview', asyncHandler(async (req, res) => {
 router.get('/daily-sales', asyncHandler(async (req, res) => {
   const { start, end, from } = dayRange(req.query.date, req.query.date);
   const prevStart = new Date(start.getTime() - 86_400_000);
-  const [allSales, refunds, custPayments, products, users] = await Promise.all([
+  const [allSales, refunds, custPayments, products, users, expenses] = await Promise.all([
     Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(`${SALE_FIELDS} receiptNo customerName customerPhone items.packLabel`).lean(),
     Refund.find({ createdAt: { $gte: start, $lt: end } }).select('createdAt receiptNo method amount reason user').lean(),
     CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('createdAt customer method amount note user').lean(),
     Product.find({}).select('name size color sku category stock costPrice active unitsPerPack').lean(),
     User.find({}).select('name').lean(),
+    Expense.find({ date: { $gte: start, $lt: end } }).lean(),
   ]);
   const customerIds = [...new Set(custPayments.map((p) => String(p.customer)))];
   const customers = customerIds.length ? await Customer.find({ _id: { $in: customerIds } }).select('name').lean() : [];
   const report = buildDailyReport({
     date: from, sales: allSales.filter((s) => s.createdAt >= start), prevSales: allSales.filter((s) => s.createdAt < start),
-    refunds, custPayments, products, users, customers,
+    refunds, custPayments, expenses, products, users, customers,
   });
   if (req.query.format === 'csv') {
     const part = req.query.part === 'items' ? 'items' : 'sales';
@@ -148,7 +151,7 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
   const { start, end, from, to } = dayRange(req.query.from, req.query.to);
   const prev = previousRange(from, to);
   const prevStart = new Date(`${prev.from}T00:00:00.000Z`);
-  const [allSales, refunds, custPayments, products, users, owing, recent, customerCount] = await Promise.all([
+  const [allSales, refunds, custPayments, products, users, owing, recent, customerCount, expenses] = await Promise.all([
     Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(SALE_FIELDS).lean(),
     Refund.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
     CustomerPayment.find({ createdAt: { $gte: start, $lt: end } }).select('method amount').lean(),
@@ -157,11 +160,39 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
     Customer.find({ balance: { $gt: 0 } }).select('name balance').sort({ balance: -1 }).lean(),
     Sale.find({}).sort({ createdAt: -1 }).limit(8).select('receiptNo createdAt total status customerName payments balance cashier').lean(),
     Customer.countDocuments({}),
+    Expense.find({ date: { $gte: start, $lt: end } }).select('amount category').lean(),
   ]);
   const sales = allSales.filter((s) => s.createdAt >= start);
   const prevSales = allSales.filter((s) => s.createdAt < start);
   const overview = buildOverview({ sales, prevSales, refunds, custPayments, products, users, from, to });
-  res.json({ ...dashboardExtras({ products, owing, recent, users, customerCount }), ...overview, previousRange: prev });
+  const spent = sumExpenses(expenses);
+  res.json({ ...dashboardExtras({ products, owing, recent, users, customerCount }), ...overview, previousRange: prev,
+    expenses: { total: spent, count: expenses.length, netProfit: Math.round((overview.totals.profit - spent) * 100) / 100, top: byCategory(expenses).slice(0, 4) } });
+}));
+
+// Profit and loss: revenue, cost of goods, gross profit, expenses by category and net profit, with the period before
+// and a series by day or month. ?format=csv downloads the statement.
+router.get('/profit', asyncHandler(async (req, res) => {
+  const { start, end, from, to } = dayRange(req.query.from, req.query.to);
+  const prev = previousRange(from, to);
+  const prevStart = new Date(`${prev.from}T00:00:00.000Z`);
+  const [allSales, allExpenses] = await Promise.all([
+    Sale.find({ createdAt: { $gte: prevStart, $lt: end } }).select(SALE_FIELDS).lean(),
+    Expense.find({ date: { $gte: prevStart, $lt: end } }).select('date category amount').lean(),
+  ]);
+  const pl = profitAndLoss({
+    sales: allSales.filter((s) => s.createdAt >= start), prevSales: allSales.filter((s) => s.createdAt < start),
+    expenses: allExpenses.filter((e) => e.date >= start), prevExpenses: allExpenses.filter((e) => e.date < start), from, to,
+  });
+  if (req.query.format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="profit-and-loss-${from}-to-${to}.csv"`);
+    return res.send(toCsv(['Line', 'Amount (GHS)'], [
+      ['Sales (after discounts and returns)', pl.revenue], ['Cost of goods sold', -pl.costOfGoods], ['Gross profit', pl.grossProfit],
+      ...pl.byCategory.map((c) => [`Expense: ${c.category}`, -c.amount]), ['Total expenses', -pl.expenses], ['Net profit', pl.netProfit],
+    ]));
+  }
+  res.json({ ...pl, previousRange: prev });
 }));
 
 export default router;

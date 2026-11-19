@@ -24,6 +24,7 @@ const ROUTE_KEYS = (isOwner) => {
   return {
     '/': ['/products', '/customers?q='],
     '/dashboard': [`/reports/dashboard?from=${t}&to=${t}`],
+    '/expenses': [`/expenses?from=${t.slice(0, 8)}01&to=${t}`],
     '/sales': [`/sales?from=${t}&to=${t}`],
     '/customers': ['/customers?q='],
     '/products': isOwner ? ['/products?all=1&q='] : [],

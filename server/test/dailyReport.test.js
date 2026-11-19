@@ -26,7 +26,7 @@ test('daily report: totals vs the day before, cash expected, lists in till order
   assert.equal(r.previousDate, '2026-11-04');
   assert.equal(r.totals.revenue, 160);
   assert.equal(r.change.revenue, 60);
-  assert.deepEqual(r.cash, { sales: 100, debts: 25, refunds: 10, expected: 115 });
+  assert.deepEqual(r.cash, { sales: 100, debts: 25, refunds: 10, paidOut: 0, expected: 115 });
   assert.equal(r.totalReceived, 155); // 100 cash + 40 MoMo + 25 debt − 10 refund
   assert.deepEqual(r.sales.map((s) => [s.receiptNo, s.cashier, s.owed]), [['R-1', 'Ama', 0], ['R-2', 'Kofi', 20]]);
   assert.deepEqual(r.items.map((i) => [i.name, i.qty, i.revenue, i.profit]), [['Rice', 3, 160, 70]]);

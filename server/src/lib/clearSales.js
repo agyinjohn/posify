@@ -9,6 +9,7 @@ import StockMovement from '../models/StockMovement.js';
 import Customer from '../models/Customer.js';
 import Product from '../models/Product.js';
 import Counter, { receiptCounterId } from '../models/Counter.js';
+import Expense from '../models/Expense.js';
 import { runAsShop } from './tenant.js';
 import { r2, r3 } from './money.js';
 import { SaleError } from './pricing.js';
@@ -66,10 +67,11 @@ const scopes = (cutoff, saleIds) => (cutoff ? {
   sales: { _id: { $in: saleIds } },
   linked: { sale: { $in: saleIds } },
   payments: { createdAt: { $lt: cutoff } },
+  expenses: { date: { $lt: cutoff } },
   held: { createdAt: { $lt: cutoff } },
   shifts: { status: 'closed', closedAt: { $lt: cutoff } },
   moves: { type: { $in: SALE_MOVES }, sale: { $in: saleIds } },
-} : { sales: {}, linked: {}, payments: {}, held: {}, shifts: {}, moves: { type: { $in: SALE_MOVES } } });
+} : { sales: {}, linked: {}, payments: {}, expenses: {}, held: {}, shifts: {}, moves: { type: { $in: SALE_MOVES } } });
 
 const saleIdsBefore = async (cutoff, session) => (cutoff
   ? (await Sale.find({ createdAt: { $lt: cutoff } }).select('_id').session(session ?? null).lean()).map((s) => s._id)
@@ -81,17 +83,18 @@ export function salesDataSummary(shop, { before } = {}) {
   return runAsShop(shop, async () => {
     const ids = await saleIdsBefore(cutoff);
     const f = scopes(cutoff, ids);
-    const [sales, refunds, creditNotes, payments, held, shifts, moves, first, last, later] = await Promise.all([
+    const [sales, refunds, creditNotes, payments, held, shifts, moves, first, last, later, expenses] = await Promise.all([
       Sale.countDocuments(f.sales), Refund.countDocuments(f.linked), CreditNote.countDocuments(f.linked), CustomerPayment.countDocuments(f.payments),
       HeldSale.countDocuments(f.held), Shift.countDocuments(f.shifts), StockMovement.countDocuments(f.moves),
       Sale.findOne(f.sales).sort({ createdAt: 1 }).select('createdAt').lean(),
       Sale.findOne(f.sales).sort({ createdAt: -1 }).select('createdAt').lean(),
       cutoff ? Sale.countDocuments({ createdAt: { $gte: cutoff } }) : 0,
+      Expense.countDocuments(f.expenses),
     ]);
     const customersOwing = cutoff
       ? (await Sale.distinct('customer', { _id: { $in: ids }, balance: { $gt: 0 } })).length
       : await Customer.countDocuments({ balance: { $ne: 0 } });
-    return { before: before || null, sales, refunds, creditNotes, debtPayments: payments, heldSales: held, shifts, stockMoves: moves, customersOwing,
+    return { before: before || null, sales, refunds, creditNotes, debtPayments: payments, expenses, heldSales: held, shifts, stockMoves: moves, customersOwing,
       firstSale: first?.createdAt ?? null, lastSale: last?.createdAt ?? null, salesKept: later };
   });
 }
@@ -126,6 +129,7 @@ async function wipe(shop, { restoreStock, cutoff }, session) {
   const counts = {
     sales: await del(Sale, f.sales), refunds: await del(Refund, f.linked), creditNotes: await del(CreditNote, f.linked),
     debtPayments: await del(CustomerPayment, f.payments), heldSales: await del(HeldSale, f.held), shifts: await del(Shift, f.shifts),
+    expenses: await del(Expense, f.expenses),
   };
 
   if (cutoff) {
