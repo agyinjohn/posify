@@ -1214,3 +1214,36 @@ tr.clickable { cursor: pointer; }
 @media (max-width: 1200px) { .gsearch kbd, .topbar-user-text { display: none; } .gsearch { flex-basis: 300px; } }
 @media (min-width: 901px) { .topbar-titles { flex-shrink: 0; max-width: 38%; } .gsearch { min-width: 170px; } }
 .cart-bar-left { display: inline-flex; align-items: center; gap: .45rem; }
+
+/* Barcode label printing */
+.lp { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.2rem; }
+.lp-add { position: relative; display: flex; align-items: center; gap: .5rem; height: 42px; padding: 0 .7rem; border: 1px solid #E4E8EC; border-radius: 10px; color: var(--muted); margin-bottom: .6rem; }
+.lp-add:focus-within { border-color: var(--ink); }
+.lp-add input { border: 0; padding: 0; min-height: 0; height: 100%; flex: 1; }
+.lp-add input:focus { outline: none; }
+.lp-matches { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: .3rem; background: var(--surface); border: 1px solid #E4E8EC; border-radius: 10px; box-shadow: 0 10px 28px rgba(23,33,43,.14); }
+.lp-matches button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; border: 0; background: none; padding: .45rem .6rem; min-height: 0; text-align: left; font-weight: 400; border-radius: 8px; }
+.lp-matches button:hover:not(:disabled) { background: var(--gold-tint); }
+.lp-matches small { font-size: .76rem; }
+.lp-rows { list-style: none; margin: 0 0 .6rem; padding: 0; max-height: 260px; overflow-y: auto; border: 1px solid #EEF1F4; border-radius: 10px; }
+.lp-rows li { display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem; border-bottom: 1px solid #EEF1F4; }
+.lp-rows li:last-child { border-bottom: 0; }
+.lp-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lp-name strong { font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-name small { font-size: .74rem; font-family: ui-monospace, Menlo, monospace; }
+.lp-remove { padding: .2rem !important; min-height: 0 !important; }
+.lp-bulk { display: flex; gap: .4rem; margin-bottom: .8rem; flex-wrap: wrap; }
+.lp-bulk button { min-height: 2.1rem; font-size: .82rem; padding: .2rem .7rem; }
+.lp-checks { display: flex; gap: 1.2rem; margin: .2rem 0 .6rem; }
+.lp-price { margin-bottom: .4rem; }
+.lp-price button { font-size: .84rem; }
+.lp-empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; text-align: center; }
+.lp-preview-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .4rem; font-size: .88rem; }
+.lp-preview-head span { color: var(--muted); }
+.lp-preview { height: 340px; border: 1px solid #E4E8EC; border-radius: 10px; background: #E9ECEF; overflow: auto; }
+.lp-preview iframe { border: 0; display: block; }
+.lp-sheet-frame { width: 344px; height: 480px; margin: 0 auto; overflow: hidden; }
+.lp-sheet-frame iframe { width: 860px; height: 1200px; transform: scale(.4); transform-origin: 0 0; } /* an A4 page at 40% */
+.lp-preview iframe.roll { width: 100%; height: 100%; }
+.lp-warn { margin: .6rem 0 0; padding: .55rem .75rem; border-radius: 8px; background: #FFF6E0; color: #6B4A08; font-size: .84rem; }
+@media (max-width: 720px) { .lp { grid-template-columns: 1fr; } .lp-preview { height: 260px; } }

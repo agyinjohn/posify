@@ -7,7 +7,8 @@ import { COMMON_COLORS, COMMON_SIZES, fmt, productLabel, qtyFmt } from '../forma
 import { CLOTHING_SIZES, compareSizes, groupProducts, uniqueSorted } from '../variants.js';
 import ProductImportModal from './ProductImport.jsx';
 import DataTable from '../DataTable.jsx';
-import { LayoutGrid, List, Pencil } from 'lucide-react';
+import LabelPrinter from '../LabelPrinter.jsx';
+import { LayoutGrid, List, Pencil, Tag } from 'lucide-react';
 import { packName, packPriceFor, packSpecificPrice, toPackPrice, toPiecePrice, toPieces, unitsOf } from '../bulk.js';
 
 const blank = { name: '', size: '', color: '', sku: '', barcode: '', category: 'General', costPrice: '', retailPrice: '', packRetailPrice: '', reorderLevel: 0, stock: 0, unitsPerPack: 1, packLabel: '' };
@@ -23,6 +24,7 @@ export default function Products() {
   const [edit, setEdit] = useState(null);
   const [importing, setImporting] = useState(false);
   const [styleKey, setStyleKey] = useState(null); // a product with sizes/colours, opened to see them all
+  const [labels, setLabels] = useState(null); // products to print barcode labels for ([] = choose in the window)
   // List (table) or cards; remembered on this device.
   const [view, setViewState] = useState(() => { try { return localStorage.getItem('pos_products_view') || 'list'; } catch { return 'list'; } });
   const setView = (v) => { setViewState(v); try { localStorage.setItem('pos_products_view', v); } catch { /* private mode */ } };
@@ -102,13 +104,15 @@ export default function Products() {
             <>
               <button onClick={() => setActive(rows, false, clear)}>Hide from sales</button>
               <button onClick={() => setActive(rows, true, clear)}>Make active</button>
+              <button onClick={() => setLabels(rows)}><Tag size={14} /> Print labels</button>
             </>
           )}
-          actions={<>{toggle}<button onClick={() => setImporting(true)}>Import</button><button className="primary" onClick={() => setEdit(blank)}>Add product</button></>}
+          actions={<>{toggle}<button onClick={() => setLabels([])}><Tag size={15} /> Labels</button><button onClick={() => setImporting(true)}>Import</button><button className="primary" onClick={() => setEdit(blank)}>Add product</button></>}
         />
         {importing && <ProductImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
+        {labels && <LabelPrinter products={labels} catalogue={list} onClose={() => setLabels(null)} />}
         {edit && (
-          <ProductForm key={edit._id || 'new'} p={edit} sizes={knownSizes} colors={knownColors}
+          <ProductForm key={edit._id || 'new'} onLabel={(p) => { setEdit(null); setLabels([p]); }} p={edit} sizes={knownSizes} colors={knownColors}
             onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }}
             onAddSize={(from) => setEdit({ ...blank, ...from, _id: undefined, size: '', color: '', sku: '', barcode: '', stock: 0, image: undefined, active: true,
               addingTo: items.find((i) => i.type === 'style' && i.variants.some((v) => v._id === from._id)) || { variants: [from] } })} />
@@ -129,6 +133,7 @@ export default function Products() {
         </div>
         <div className="toolbar-buttons">
           {toggle}
+          <button onClick={() => setLabels([])}><Tag size={15} /> Labels</button>
           <button onClick={() => setImporting(true)}>Import</button>
           <button className="primary" onClick={() => setEdit(blank)}>Add product</button>
         </div>
@@ -195,13 +200,16 @@ export default function Products() {
       </div>
 
       {importing && <ProductImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} />}
+      {labels && <LabelPrinter products={labels} catalogue={list} onClose={() => setLabels(null)} />}
       {openStyle && !edit && (
         <StyleView style={openStyle} onClose={() => setStyleKey(null)} onEdit={(v) => setEdit(v)} onChanged={load}
+          onLabels={(vs) => { setStyleKey(null); setLabels(vs); }}
           onAddMore={() => setEdit({ ...blank, ...openStyle.variants[0], _id: undefined, size: '', color: '', sku: '', barcode: '', stock: 0, image: undefined, active: true, addingTo: openStyle })} />
       )}
       {edit && (
         <ProductForm
           key={edit._id || `new-${edit.name}-${edit.size}-${edit.addingTo ? 'more' : ''}`}
+          onLabel={(p) => { setEdit(null); setLabels([p]); }}
           p={edit}
           sizes={knownSizes}
           colors={knownColors}
@@ -256,7 +264,7 @@ function ChipsInput({ values, onChange, suggestions = [], quick = [], placeholde
 }
 
 // Every size and colour of one product: tap one to edit it, set one price for all, or add more sizes/colours.
-function StyleView({ style, onClose, onEdit, onAddMore, onChanged }) {
+function StyleView({ style, onClose, onEdit, onAddMore, onChanged, onLabels }) {
   const toast = useToast();
   const [price, setPrice] = useState('');
   const [cost, setCost] = useState('');
@@ -299,6 +307,7 @@ function StyleView({ style, onClose, onEdit, onAddMore, onChanged }) {
         <button disabled={busy || (price === '' && cost === '')}>{busy ? 'Saving…' : 'Apply to all'}</button>
       </form>
       <div className="actions">
+        {onLabels && <button onClick={() => onLabels(style.variants.filter((v) => v.active))}><Tag size={15} /> Print labels</button>}
         <button className="primary" onClick={onAddMore}>Add sizes or colours</button>
       </div>
       <p className="hint">Each size/colour has its own stock: change stock on the Stock page.</p>
@@ -306,7 +315,7 @@ function StyleView({ style, onClose, onEdit, onAddMore, onChanged }) {
   );
 }
 
-function ProductForm({ p, sizes = COMMON_SIZES, colors = COMMON_COLORS, onClose, onSaved, onAddSize }) {
+function ProductForm({ p, sizes = COMMON_SIZES, colors = COMMON_COLORS, onClose, onSaved, onAddSize, onLabel }) {
   const toast = useToast();
   const isNew = !p._id;
   const adding = p.addingTo || null; // adding more sizes/colours to an existing product
@@ -543,6 +552,7 @@ function ProductForm({ p, sizes = COMMON_SIZES, colors = COMMON_COLORS, onClose,
         <div className="actions span2">
           {!isNew && <button type="button" className={p.active ? 'danger' : ''} onClick={toggleActive}>{p.active ? 'Hide from sales' : 'Make active'}</button>}
           {!isNew && onAddSize && <button type="button" onClick={() => onAddSize(p)}>Add sizes or colours</button>}
+          {!isNew && onLabel && <button type="button" onClick={() => onLabel(p)}><Tag size={15} /> Print label</button>}
           <button className="primary" disabled={busy}>{multi ? `Add ${newCombos.length || ''} size${newCombos.length === 1 ? '' : 's'}/colour${newCombos.length === 1 ? '' : 's'}`.replace('  ', ' ') : 'Save product'}</button>
         </div>
       </form>
