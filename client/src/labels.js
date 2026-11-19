@@ -41,7 +41,7 @@ export function barcodeFits(code, size) {
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// One label's inner HTML. opts: { shopName, showPrice, showShop, priceOf(p) -> text, nameOf(p) -> text }
+// One label's inner HTML. opts: { shopName, showPrice (true/false, or a function of the product), showShop, priceOf(p), nameOf(p) }
 export function labelInner(p, size, { shopName = '', showPrice = true, showShop = true, priceOf, nameOf }) {
   const code = labelCode(p);
   const small = size.h < 28;
@@ -50,7 +50,7 @@ export function labelInner(p, size, { shopName = '', showPrice = true, showShop 
   try { bars = barcodeSvg(code, { width: size.w - 4, height: barH }); } catch { bars = '<div class="lb-bad">No barcode</div>'; }
   return `${showShop && shopName && !small ? `<div class="lb-shop">${esc(shopName)}</div>` : ''}`
     + `<div class="lb-name">${esc(nameOf(p))}</div>`
-    + `${showPrice ? `<div class="lb-price">${esc(priceOf(p))}</div>` : ''}`
+    + `${(typeof showPrice === 'function' ? showPrice(p) : showPrice) ? `<div class="lb-price">${esc(priceOf(p))}</div>` : ''}`
     + `<div class="lb-bars">${bars}</div><div class="lb-code">${esc(code)}</div>`;
 }
 

@@ -43,3 +43,12 @@ test('long codes on small labels are flagged; the document has one label block p
   assert.match(html, /DEMO-014/);
   assert.match(labelsDocument([[soap]], sizeById('roll-40x30'), { priceOf: () => '', nameOf: (p) => p.name, showPrice: false }), /size: 40mm 30mm/);
 });
+
+test('the price can be left off for some products and kept for others', () => {
+  const size = sizeById('a4-3x8');
+  const html = labelsDocument(layoutLabels([{ product: rice, copies: 1 }, { product: soap, copies: 1 }], size), size,
+    { showPrice: (p) => p._id === 'r', priceOf: (p) => `GH₵${p.retailPrice}`, nameOf: (p) => p.name });
+  assert.match(html, /GH₵125/);
+  assert.doesNotMatch(html, /GH₵6</);
+  assert.equal((html.match(/class="lb-price"/g) || []).length, 1);
+});
