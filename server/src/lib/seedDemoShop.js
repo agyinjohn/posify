@@ -13,6 +13,7 @@ import Refund from '../models/Refund.js';
 import CreditNote from '../models/CreditNote.js';
 import CustomerPayment from '../models/CustomerPayment.js';
 import Counter, { receiptCounterId } from '../models/Counter.js';
+import Expense from '../models/Expense.js';
 import { runAsShop } from './tenant.js';
 import { clearShopSales } from './clearSales.js';
 import { buildDemoData } from './demoSeed.js';
@@ -44,7 +45,7 @@ export async function seedShop(shop, { reset = false, log = console.log } = {}) 
   return runAsShop(shop._id, async () => {
     if (reset) {
       await clearShopSales(shop._id, { restoreStock: false });
-      await Promise.all([Product, StockMovement, Customer, Supplier, PurchaseOrder, StockTake].map((M) => M.deleteMany({})));
+      await Promise.all([Product, StockMovement, Customer, Supplier, PurchaseOrder, StockTake, Expense].map((M) => M.deleteMany({})));
       log(`[demo] Cleared "${shop.name}" (products, customers, suppliers, sales).`);
     }
     // Two cashier accounts so reports show sales by person. They get a random password (the owner can reset it).
@@ -67,9 +68,10 @@ export async function seedShop(shop, { reset = false, log = console.log } = {}) 
     if (data.refunds.length) await Refund.insertMany(data.refunds);
     if (data.creditNotes.length) await CreditNote.insertMany(data.creditNotes);
     if (data.payments.length) await CustomerPayment.insertMany(data.payments);
+    if (data.expenses.length) await Expense.insertMany(data.expenses);
     // Receipt numbers carry on after the demo ones.
     await Counter.updateOne({ _id: receiptCounterId(shop._id) }, { $set: { seq: data.receipts, shop: shop._id } }, { upsert: true, skipTenant: true });
-    const summary = { products: data.products.length, customers: data.customers.length, suppliers: data.suppliers.length, sales: data.sales.length, debtPayments: data.payments.length };
+    const summary = { products: data.products.length, customers: data.customers.length, suppliers: data.suppliers.length, sales: data.sales.length, debtPayments: data.payments.length, expenses: data.expenses.length };
     log(`[demo] "${shop.name}": added ${summary.products} products, ${summary.customers} customers, ${summary.suppliers} suppliers, ${summary.sales} sales, ${summary.debtPayments} debt payments.`);
     return summary;
   });

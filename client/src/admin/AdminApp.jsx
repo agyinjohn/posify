@@ -353,7 +353,7 @@ function ClearSales({ shop, onClose }) {
     return (
       <Modal title="Sales cleared" onClose={onClose}>
         <div className="adm-created"><CircleCheck size={28} aria-hidden="true" /><p>
-          Removed {n(done.sales, 'sale')}{done.before && <> made before {longDay(done.before)}</>}, {n(done.refunds, 'refund')}, {n(done.debtPayments, 'debt payment')} and {n(done.shifts, 'shift')}.
+          Removed {n(done.sales, 'sale')}{done.before && <> made before {longDay(done.before)}</>}, {n(done.refunds, 'refund')}, {n(done.debtPayments, 'debt payment')}, {n(done.expenses || 0, 'expense')} and {n(done.shifts, 'shift')}.
           {done.customersReset > 0 && <> {n(done.customersReset, 'customer balance')} {done.before ? 'adjusted' : 'set back to 0'}.</>}
           {done.productsRestocked > 0 && <> {done.piecesRestocked} pieces put back into stock across {n(done.productsRestocked, 'product')}.</>}
           {done.receiptsRestarted ? ' The next receipt will be R-000001.' : ' Receipt numbers carry on as before.'}
@@ -363,7 +363,7 @@ function ClearSales({ shop, onClose }) {
       </Modal>
     );
   }
-  const total = info ? info.sales + info.refunds + info.debtPayments + info.shifts + info.heldSales + info.customersOwing + info.stockMoves : 0;
+  const total = info ? info.sales + info.refunds + info.debtPayments + (info.expenses || 0) + info.shifts + info.heldSales + info.customersOwing + info.stockMoves : 0;
   return (
     <Modal title={`Clear sales for ${shop.name}?`} onClose={onClose}>
       <form onSubmit={submit} className="adm-clear">
@@ -388,6 +388,7 @@ function ClearSales({ shop, onClose }) {
                   <li>{n(info.sales, 'sale')}{info.firstSale && <span className="adm-muted"> ({dateTime(info.firstSale)} – {dateTime(info.lastSale)})</span>}</li>
                   <li>{n(info.refunds, 'refund')} and {n(info.creditNotes, 'credit note')}{dated && ' on those sales'}</li>
                   <li>{n(info.debtPayments, 'debt payment')}</li>
+                  {info.expenses > 0 && <li>{n(info.expenses, 'expense')}{dated && ' dated before the date'}</li>}
                   <li>{n(info.shifts, 'shift')}{dated && ' closed before the date'} and {n(info.heldSales, 'held sale')}</li>
                   {dated
                     ? <li>{n(info.customersOwing, 'customer')}: what they owe from those sales comes off their balance</li>

@@ -165,6 +165,22 @@ export function buildDemoData({ now = new Date(), days = 42, seed = 20261118, ow
     }
   }
 
+  // Running costs: rent and wages monthly, light bill, transport and small daily cash items from the till.
+  const expenses = [];
+  const addExp = (dayStart, category, amount, method, paidTo = '', fromTill = false) => {
+    const at = new Date(Math.min(dayStart + (8 + Math.floor(rand() * 10)) * 3_600_000, now.getTime()));
+    expenses.push({ _id: oid(), date: at, category, amount: r2(amount), method, fromTill: fromTill && method === 'Cash', paidTo, note: '', user: ownerId, createdAt: at, updatedAt: at });
+  };
+  for (let d = days; d >= 0; d--) {
+    const dayStart = today - d * DAY;
+    const date = new Date(dayStart);
+    if (date.getUTCDate() === 1) { addExp(dayStart, 'Rent', 1500, 'Transfer', 'Landlord'); addExp(dayStart, 'Salaries and wages', 1800, 'MoMo', 'Shop assistants'); }
+    if (date.getUTCDate() === 15) addExp(dayStart, 'Electricity and water', 180 + Math.round(rand() * 80), 'MoMo', 'ECG prepaid');
+    if (date.getUTCDay() === 1) addExp(dayStart, 'Transport and fuel', 60 + Math.round(rand() * 60), 'Cash', 'Trotro / taxi to market', true);
+    if (date.getUTCDay() === 4) addExp(dayStart, 'Airtime and data', 20 + Math.round(rand() * 20), 'MoMo', 'MTN');
+    if (rand() < 0.18) addExp(dayStart, 'Shop supplies', 10 + Math.round(rand() * 30), 'Cash', 'Polythene bags', true);
+  }
+
   // Opening stock = what was sold + what is left now, so stock never goes below zero and some items end low.
   for (const p of products) {
     const out = sold.get(String(p._id)) || 0;
@@ -173,5 +189,5 @@ export function buildDemoData({ now = new Date(), days = 42, seed = 20261118, ow
     if (opening > 0) moves.push({ _id: oid(), product: p._id, type: 'opening', qty: opening, costPrice: p.costPrice, reason: 'Opening stock', user: ownerId, createdAt: start, updatedAt: start });
     delete p.weight; delete p.left;
   }
-  return { products, customers, suppliers, sales, moves, refunds, creditNotes, payments, receipts: receipt };
+  return { products, customers, suppliers, sales, moves, refunds, creditNotes, payments, expenses, receipts: receipt };
 }

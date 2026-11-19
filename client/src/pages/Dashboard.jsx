@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { BarChart } from '@mui/x-charts/BarChart';
 import {
-  AlertTriangle, ArrowRight, Banknote, Boxes, CircleDollarSign, HandCoins, Receipt, RotateCcw, ShoppingBag, TrendingUp, Undo2, X,
+  AlertTriangle, ArrowRight, Banknote, Boxes, CircleDollarSign, HandCoins, Receipt, RotateCcw, ShoppingBag, TrendingUp, Wallet, X,
 } from 'lucide-react';
 import { cacheGet, swrFetch } from '../cache.js';
 import { useAuth } from '../auth.jsx';
@@ -154,7 +154,10 @@ export default function Dashboard() {
 
             <div className="dash-kpis">
               <Kpi tone="gold" icon={CircleDollarSign} label="Total sales" value={fmt(d.totals.revenue)}><Change value={d.change.revenue} against={against} /></Kpi>
-              <Kpi tone="ink" icon={TrendingUp} label="Profit" value={fmt(d.totals.profit)}><Change value={d.change.profit} against={against} /></Kpi>
+              <Kpi tone="ink" icon={TrendingUp} label="Gross profit" value={fmt(d.totals.profit)}>
+                <Change value={d.change.profit} against={against} />
+                {d.expenses && <span className="dash-change plain">After expenses: {fmt(d.expenses.netProfit)}</span>}
+              </Kpi>
               <Kpi tone="green" icon={Receipt} label="Sales" value={d.totals.salesCount}><span className="dash-change plain">Average {fmt(d.totals.avgSale)}</span></Kpi>
               <Kpi tone="indigo" icon={HandCoins} label="Customers owe" value={fmt(d.debt.total)}><span className="dash-change plain">{d.debt.customers} customer{d.debt.customers === 1 ? '' : 's'}</span></Kpi>
             </div>
@@ -163,7 +166,7 @@ export default function Dashboard() {
               <Stat icon={Boxes} tone="blue" label="Stock value (at cost)" value={fmt(d.stock.value)} hint={`${fmt(d.stock.retailValue)} at selling price`} to="/reports" />
               <Stat icon={ShoppingBag} tone="green" label="Items sold" value={qtyFmt(d.totals.itemsSold)} hint={`${d.productsSold} product${d.productsSold === 1 ? '' : 's'}`} to="/reports" />
               <Stat icon={Banknote} tone="gold" label="Debts collected" value={fmt(d.totals.debtCollected)} hint={`Sold on credit: ${fmt(d.totals.creditGiven)}`} to="/customers" />
-              <Stat icon={Undo2} tone="red" label="Refunds" value={fmt(d.totals.refunded)} hint={`Discounts: ${fmt(d.totals.discounts)}`} to="/sales" />
+              <Stat icon={Wallet} tone="red" label="Expenses" value={fmt(d.expenses?.total ?? 0)} hint={`Refunds ${fmt(d.totals.refunded)} · discounts ${fmt(d.totals.discounts)}`} to="/expenses" />
             </div>
 
             <div className="dash-grid">

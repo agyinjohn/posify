@@ -56,6 +56,7 @@ export function CloseShiftModal({ shift, onClose, onClosed }) {
           <div><span>Sold on credit</span><strong>{fmt(summary.creditGiven)}</strong></div>
           <div><span>Debts collected</span><strong>{fmt(summary.debtCollected)}</strong></div>
           {summary.refunded > 0 && <div><span>Refunded</span><strong>{fmt(summary.refunded)}</strong></div>}
+          {summary.paidOut > 0 && <div><span>Paid out (expenses)</span><strong>{fmt(summary.paidOut)}</strong></div>}
         </div>
         <h3>By payment method</h3>
         <div className="tablewrap narrow"><table><tbody>

@@ -6,9 +6,9 @@ import { netSale } from './returns.js';
  * sales: every sale made in the period (any status); custPayments: debt payments; refunds: money paid back.
  * Voided/partly returned sales still count their original payments; the Refund rows take the money back out,
  * so each payment method matches what is really in the till. Voids from before refunds were tracked
- * (no refundedTotal) are skipped, as they always were.
+ * (no refundedTotal) are skipped, as they always were. expenses: those paid out of the till (fromTill) come off.
  */
-export function cashUp({ sales, custPayments = [], refunds = [], openingFloat = 0, closingCash = null }) {
+export function cashUp({ sales, custPayments = [], refunds = [], expenses = [], openingFloat = 0, closingCash = null }) {
   const counted = sales.filter((s) => s.status !== 'voided' || s.refundedTotal != null);
   const byMethod = Object.fromEntries(PAYMENT_METHODS.map((m) => [m, 0]));
   let total = 0, discounts = 0, creditGiven = 0, debtCollected = 0, refunded = 0;
@@ -22,6 +22,9 @@ export function cashUp({ sales, custPayments = [], refunds = [], openingFloat = 
   }
   for (const p of custPayments) { byMethod[p.method] = r2(byMethod[p.method] + p.amount); debtCollected += p.amount; }
   for (const rf of refunds) { byMethod[rf.method] = r2(byMethod[rf.method] - rf.amount); refunded += rf.amount; }
+  // Expenses paid out of the drawer (fromTill) leave the till like refunds do.
+  let paidOut = 0;
+  for (const e of expenses) { if (!e.fromTill) continue; byMethod[e.method] = r2(byMethod[e.method] - e.amount); paidOut += e.amount; }
 
   const expectedCash = r2(openingFloat + byMethod.Cash);
   return {
@@ -31,6 +34,7 @@ export function cashUp({ sales, custPayments = [], refunds = [], openingFloat = 
     creditGiven: r2(creditGiven),
     debtCollected: r2(debtCollected),
     refunded: r2(refunded),
+    paidOut: r2(paidOut),
     byMethod,
     expectedCash,
     cashVariance: closingCash === null ? null : r2(closingCash - expectedCash),

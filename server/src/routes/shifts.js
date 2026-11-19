@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import Expense from '../models/Expense.js';
 import Shift from '../models/Shift.js';
 import Sale from '../models/Sale.js';
 import CustomerPayment from '../models/CustomerPayment.js';
@@ -60,12 +61,13 @@ router.post('/:id/close', asyncHandler(async (req, res) => {
   // Everything that happened since the shift opened. Voided and partly returned sales are included:
   // their payments went into the till and the Refund rows take the money back out.
   const since = { createdAt: { $gte: open.createdAt } };
-  const [sales, custPayments, refunds] = await Promise.all([
+  const [sales, custPayments, refunds, expenses] = await Promise.all([
     Sale.find(since).lean(),
     CustomerPayment.find(since).lean(),
     Refund.find(since).lean(),
+    Expense.find({ ...since, fromTill: true }).lean(),
   ]);
-  const summary = cashUp({ sales, custPayments, refunds, openingFloat: open.openingFloat, closingCash });
+  const summary = cashUp({ sales, custPayments, refunds, expenses, openingFloat: open.openingFloat, closingCash });
 
   // Claim the close atomically so two tills closing at once cannot both succeed.
   const shift = await Shift.findOneAndUpdate(

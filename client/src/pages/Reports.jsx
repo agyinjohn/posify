@@ -5,8 +5,9 @@ import { Field, RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { fmt, qtyFmt, todayStr } from '../format.js';
 import Overview from './ReportsOverview.jsx';
 import DailyReport from './DailyReport.jsx';
+import ProfitLoss from './ProfitLoss.jsx';
 
-const TABS = [['overview', 'Overview'], ['daily', 'Daily report'], ['product', 'Sales by product'], ['stock', 'Stock list']];
+const TABS = [['overview', 'Overview'], ['profit', 'Profit & loss'], ['daily', 'Daily report'], ['product', 'Sales by product'], ['stock', 'Stock list']];
 
 export default function Reports() {
   const [tab, setTab] = useState('overview');
@@ -18,6 +19,7 @@ export default function Reports() {
         ))}
       </div>
       {tab === 'overview' && <Overview />}
+      {tab === 'profit' && <ProfitLoss />}
       {tab === 'daily' && <DailyReport />}
       {tab === 'product' && <ByProduct />}
       {tab === 'stock' && <StockList />}

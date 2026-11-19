@@ -109,6 +109,8 @@ export default function DailyReport() {
             <div className="report-kpi warn"><span>Sold on credit</span><strong>{fmt(d.totals.creditGiven)}</strong></div>
             <div className="report-kpi ok"><span>Debts collected</span><strong>{fmt(d.totals.debtCollected)}</strong></div>
             {d.totals.refunded > 0 && <div className="report-kpi warn"><span>Refunded</span><strong>{fmt(d.totals.refunded)}</strong></div>}
+            {d.expenseTotal > 0 && <div className="report-kpi warn"><span>Expenses</span><strong>{fmt(d.expenseTotal)}</strong></div>}
+            {d.expenseTotal > 0 && <div className={`report-kpi ${d.netProfit < 0 ? 'warn' : 'ok'}`}><span>Net profit</span><strong>{fmt(d.netProfit)}</strong></div>}
           </div>
           {d.voided.count > 0 && (
             <p className="hint" style={{ marginTop: '.6rem' }}>
@@ -133,6 +135,7 @@ export default function DailyReport() {
                   <div><span>Cash from sales</span><span>{fmt(d.cash.sales)}</span></div>
                   {d.cash.debts > 0 && <div><span>+ Cash debt payments</span><span>{fmt(d.cash.debts)}</span></div>}
                   {d.cash.refunds > 0 && <div><span>− Cash refunds</span><span>{fmt(d.cash.refunds)}</span></div>}
+                  {d.cash.paidOut > 0 && <div><span>− Cash paid out (expenses)</span><span>{fmt(d.cash.paidOut)}</span></div>}
                   <div className="total"><span>Cash that should be in the drawer</span><span>{fmt(d.cash.expected)}</span></div>
                   <p className="hint">Plus any opening float. Compare with the shift cash-up count.</p>
                 </div>
@@ -259,6 +262,24 @@ export default function DailyReport() {
                       <tr key={i}><td>{time(r.at)}</td><td>{r.receiptNo}</td><td>{r.reason || <span className="muted-cell">—</span>}</td><td>{r.by}</td><td>{r.method}</td><td className="num"><strong>{fmt(r.amount)}</strong></td></tr>
                     ))}
                     <tr className="sum"><td colSpan="5">Total refunded</td><td className="num">{fmt(d.totals.refunded)}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {d.expenses?.length > 0 && (
+            <>
+              <div className="report-section-title">Expenses ({d.expenses.length})</div>
+              <div className="tablewrap">
+                <table>
+                  <thead><tr><th>For</th><th>Paid to</th><th>Note</th><th>By</th><th>Paid by</th><th className="num">Amount</th></tr></thead>
+                  <tbody>
+                    {d.expenses.map((e, i) => (
+                      <tr key={i}><td>{e.category}</td><td>{e.paidTo || <span className="muted-cell">–</span>}</td><td className="muted-cell">{e.note || '–'}</td><td>{e.by}</td>
+                        <td>{e.method}{e.fromTill ? ' (till)' : ''}</td><td className="num"><strong>{fmt(e.amount)}</strong></td></tr>
+                    ))}
+                    <tr className="sum"><td colSpan="5">Total spent</td><td className="num">{fmt(d.expenseTotal)}</td></tr>
                   </tbody>
                 </table>
               </div>
