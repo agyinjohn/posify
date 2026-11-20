@@ -85,13 +85,21 @@ Products page, then **Import**. Download the template, fill it in (one product p
 
 ## Desktop app
 
-```bash
-cd desktop && npm install
-POS_URL=https://your-pos-site.example npm start   # try it
-npm run dist                                       # builds the Windows installer into desktop/dist
-```
-For the client's machine, set the live URL in `desktop/config.default.json` before building the installer.
-The desktop app needs an internet connection to reach the server (see REQUIREMENTS.md: offline mode is not built yet).
+`desktop/` is the Posify app for Windows, Mac and Linux: a window around your Posify website (Electron). Updates to the
+website show up in the app straight away; the app itself updates from GitHub Releases.
+
+- **First start:** it asks for the shop's Posify web address (once) and remembers it. Change it later from the
+  Posify menu (press Alt on Windows) > Change shop address. If the server cannot be reached it shows a Try again page.
+- **Build the installers on GitHub:** Actions > *Desktop app* > Run workflow. Optionally enter the web address so the
+  app opens it without asking. When it finishes, download the installers from the run's *Artifacts*
+  (Windows `Posify-Setup-x.y.z.exe`, Mac `.dmg`, Linux `.AppImage` / `.deb`).
+- **Release with auto-update:** raise `version` in `desktop/package.json`, then push a tag `desktop-vX.Y.Z`. The
+  installers are published as a GitHub Release, and installed apps offer the update.
+- **Locally:** `cd desktop && npm install`, then `POS_URL=https://your-posify-site npm start` to try it, or
+  `npm run dist:linux` / `dist:win` (Windows, or Linux with Wine) / `dist:mac` (on a Mac) to build.
+
+The apps are not code-signed yet: Windows shows "Windows protected your PC" (More info > Run anyway) and Mac needs
+right-click > Open the first time.
 
 ## Cloudinary (optional)
 Add `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` to `server/.env`.

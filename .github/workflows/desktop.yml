@@ -1,0 +1,62 @@
+# Builds the Posify desktop app (desktop/) for Windows, Mac and Linux on GitHub's own machines.
+# - Actions > "Desktop app" > Run workflow: builds the installers and attaches them to the run (Artifacts).
+#   Optionally type your Posify web address so the app opens it straight away instead of asking.
+# - Push a tag like desktop-v1.1.0: also publishes them as a GitHub Release, which installed apps update from.
+name: Desktop app
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Posify web address to open by default (optional, e.g. https://pos.yourshop.com)"
+        required: false
+        default: ""
+  push:
+    tags: ["desktop-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Default web address
+        if: ${{ github.event.inputs.url != '' }}
+        shell: bash
+        env:
+          POSIFY_URL: ${{ github.event.inputs.url }}
+        run: node -e "require('fs').writeFileSync('config.default.json', JSON.stringify({ url: process.env.POSIFY_URL }) + '\n')"
+
+      - name: Build installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false" # no code-signing certificate yet
+        run: npx electron-builder --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: posify-desktop-${{ runner.os }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+          if-no-files-found: error

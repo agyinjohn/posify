@@ -1,8 +1,4 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Shop POS</title>
-<style>body{font-family:system-ui,sans-serif;background:#17212B;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}
-div{max-width:380px;text-align:center}button{font:inherit;font-weight:600;padding:.7rem 1.4rem;border:0;border-radius:6px;background:#E3A62B;color:#17212B;cursor:pointer}</style></head>
-<body><div><h1>Can't reach the shop server</h1><p>Check that this computer is online, then try again.</p>
-<button id="retry">Try again</button></div>
-<script>document.getElementById('retry').onclick=()=>{const u=new URLSearchParams(location.search).get('url');if(u)location.href=u;};</script>
-</body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'"><title>Posify</title><link rel="stylesheet" href="page.css"></head>
+<body><div class="card"><svg class="mark" viewBox="0 0 56 56" fill="none" aria-hidden="true"><rect width="56" height="56" rx="16" fill="#E3A62B"/><rect x="14" y="16" width="28" height="3.5" rx="1.75" fill="#17212B"/><rect x="14" y="24" width="28" height="3.5" rx="1.75" fill="#17212B"/><rect x="14" y="32" width="18" height="3.5" rx="1.75" fill="#17212B"/><circle cx="40" cy="38" r="6" fill="#17212B"/><path d="M37.5 38l1.8 1.8 3.2-3.2" stroke="#E3A62B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Can't reach Posify</h1><p>Check that this computer is connected to the internet, then try again.</p>
+<button id="retry">Try again</button><button class="link" id="change">Change shop address</button><small id="addr"></small></div>
+<script src="offline.js"></script></body></html>
