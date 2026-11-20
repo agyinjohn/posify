@@ -1,12 +1,15 @@
 {
-  "name": "pos-desktop",
-  "version": "1.0.0",
+  "name": "posify-desktop",
+  "version": "1.1.0",
   "private": true,
-  "description": "Desktop wrapper for the Shop POS web app",
+  "description": "Posify point of sale for Windows, Mac and Linux",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "electron-updater": "^6.3.9"
@@ -16,14 +19,72 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.shoppos.desktop",
-    "productName": "Shop POS",
-    "files": ["main.js", "offline.html", "config.default.json"],
-    "win": { "target": "nsis" },
+    "appId": "com.posify.desktop",
+    "productName": "Posify",
+    "copyright": "Posify",
+    "files": [
+      "main.js",
+      "preload.js",
+      "setup.html",
+      "setup.js",
+      "offline.html",
+      "offline.js",
+      "page.css",
+      "config.default.json",
+      "build/icon.png"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Posify",
+      "artifactName": "Posify-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "icon": "build/icon.png",
+      "artifactName": "Posify-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "build/icon.png",
+      "maintainer": "Posify",
+      "artifactName": "Posify-${version}.${ext}"
+    },
     "publish": {
       "provider": "github",
-      "owner": "YOUR_GITHUB_USERNAME",
-      "repo": "shop-pos"
+      "owner": "agyinjohn",
+      "repo": "posify",
+      "releaseType": "release"
     }
-  }
+  },
+  "author": "GThink Group"
 }

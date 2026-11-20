@@ -12,7 +12,7 @@ import { useOfflineSync } from '../offlineSync.js';
 import { OpenShiftModal, CloseShiftModal } from './ShiftModals.jsx';
 import VariantPicker from '../VariantPicker.jsx';
 import { groupProducts } from '../variants.js';
-import { ChevronLeft, ChevronRight, Minus, PauseCircle, Plus, RotateCcw, Search, ShoppingCart, Trash2, UserRound, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, List, Minus, Package, PauseCircle, Plus, RotateCcw, Search, ShoppingCart, Trash2, UserRound, X } from 'lucide-react';
 
 // Most of a product that can go in the cart: whole packs when selling by the pack, else pieces.
 const maxQty = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1 ? Math.floor(p.stock / p.unitsPerPack) : p.stock);
@@ -24,10 +24,11 @@ const stockMsg = (p, unit) => (unit === 'pack' && p.unitsPerPack > 1
 // Soft tints for products without a photo, picked by category so a category's cards share a colour.
 const TINTS = [['#E7F0FC', '#1F5FAE'], ['#E4F4EA', '#157347'], ['#FDF4E3', '#9A6A0E'], ['#F3E8FD', '#6B3FA0'], ['#FDECEA', '#A3271F'], ['#E6F6F7', '#0E6E75'], ['#EEF1F4', '#3A4754']];
 const tintOf = (key) => TINTS[[...String(key || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TINTS.length];
-function Thumb({ image, name, category }) {
-  if (image) return <img className="pcard-thumb" src={image} alt="" loading="lazy" decoding="async" />;
+function Thumb({ image, name, category, large, small }) {
+  const cls = `pcard-thumb${large ? ' large' : ''}${small ? ' small' : ''}`;
+  if (image) return <img className={cls} src={image} alt="" loading="lazy" decoding="async" />;
   const [bg, fg] = tintOf(category || name);
-  return <span className="pcard-thumb" style={{ background: bg, color: fg }}>{name.trim().slice(0, 2).toUpperCase()}</span>;
+  return <span className={cls} style={{ background: bg, color: fg }}>{large ? <Package size={30} strokeWidth={1.6} /> : name.trim().slice(0, 2).toUpperCase()}</span>;
 }
 
 export default function Sell() {
@@ -55,6 +56,10 @@ export default function Sell() {
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [picking, setPicking] = useState(null); // a style whose size/colour is being chosen
   const [category, setCategory] = useState(''); // '' = all
+  // Products as photo cards (grid) or one per row (list); remembered on this device. First time: grid only when
+  // most products have photos.
+  const [view, setViewState] = useState(() => { try { return localStorage.getItem('pos_sell_view') || ''; } catch { return ''; } });
+  const setView = (v) => { setViewState(v); try { localStorage.setItem('pos_sell_view', v); } catch { /* private mode */ } };
   const [saleCustomer, setSaleCustomer] = useState(''); // chosen before paying (optional)
   const [pickCustomer, setPickCustomer] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -206,6 +211,33 @@ export default function Sell() {
     loadHeldCount();
   };
 
+  // One shape for both views: list rows and photo cards.
+  const shownView = view || (products.length && products.filter((p) => p.image?.url).length >= products.length / 2 ? 'grid' : 'list');
+  const tiles = results.map((item) => {
+    if (item.type === 'style') {
+      const count = item.variants.reduce((t, v) => t + (inCart.get(v._id) ? 1 : 0), 0);
+      return {
+        key: item.key, name: item.name, category: item.category, image: item.image?.url, disabled: item.stock <= 0, onClick: () => openStyle(item), count,
+        sub: [item.sizes.length ? item.sizes.slice(0, 5).join(' · ') + (item.sizes.length > 5 ? ' …' : '') : null,
+          item.colors.length ? `${item.colors.length} colour${item.colors.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · '),
+        price: <>{item.minPrice !== item.maxPrice && <small>from </small>}{fmt(item.minPrice)}</>,
+        stockText: count ? `${count} in sale` : item.stock <= 0 ? 'Sold out' : `${qtyFmt(item.stock)} left`,
+        stockClass: count ? ' incart' : item.stock <= 0 ? ' out' : '',
+      };
+    }
+    const p = item.product;
+    const l = inCart.get(p._id);
+    const packed = p.unitsPerPack > 1 && p.stock >= p.unitsPerPack;
+    return {
+      key: p._id, id: p._id, name: p.name, category: p.category, image: p.image?.url, disabled: p.stock <= 0, onClick: () => add(p),
+      sub: [p.size, p.color].filter(Boolean).join(' · ') || (p.unitsPerPack > 1 ? `${p.unitsPerPack} per ${packName(p)}` : ''),
+      price: packed ? <>{fmt(packPriceFor(p))}<small> /{packName(p)}</small></> : fmt(priceOf(p)),
+      stockText: p.stock <= 0 ? 'Out' : `${qtyFmt(p.stock)} left`,
+      stockClass: p.stock <= 0 ? ' out' : p.stock <= p.reorderLevel ? ' low' : '',
+      line: l ? `${qtyFmt(l.qty)}${l.unit === 'pack' ? ` ${packName(p)}` : ''}` : null,
+    };
+  });
+
   const pendingCount = queue.filter((i) => i.status === 'pending').length;
   const failedCount = queue.filter((i) => i.status === 'error').length;
 
@@ -256,70 +288,58 @@ export default function Sell() {
             />
             {q ? <button className="sell-search-clear" onClick={() => { setQ(''); searchRef.current?.focus(); }} aria-label="Clear search"><X size={16} /></button> : <kbd>F2</kbd>}
           </div>
-          {categories.length > 1 && (
+          <div className="cat-row">
+          {categories.length > 1 ? (
             <div className="cat-tabs" role="tablist" aria-label="Categories">
               <button role="tab" aria-selected={!category} className={!category ? 'on' : ''} onClick={() => setCategory('')}>All <small>{products.length}</small></button>
               {categories.map(([c, n]) => (
                 <button key={c} role="tab" aria-selected={category === c} className={category === c ? 'on' : ''} onClick={() => setCategory(c)}>{c} <small>{n}</small></button>
               ))}
             </div>
-          )}
+          ) : <span />}
+            <div className="view-toggle sell-view" role="group" aria-label="Show products as">
+              <button type="button" className={shownView === 'list' ? 'on' : ''} onClick={() => setView('list')} aria-label="List" aria-pressed={shownView === 'list'}><List size={17} /></button>
+              <button type="button" className={shownView === 'grid' ? 'on' : ''} onClick={() => setView('grid')} aria-label="Photo cards" aria-pressed={shownView === 'grid'}><LayoutGrid size={17} /></button>
+            </div>
+          </div>
         </div>
 
-        <ul className="plist">
-          {results.map((item) => {
-            if (item.type === 'style') {
-              const count = item.variants.reduce((t, v) => t + (inCart.get(v._id) ? 1 : 0), 0);
-              return (
-                <li key={item.key} className={`pcard${count ? ' in-cart' : ''}${item.stock <= 0 ? ' out' : ''}`}>
-                  <button className="pcard-main" disabled={item.stock <= 0} onClick={() => openStyle(item)}>
-                    <span className="pcard-top">
-                      <Thumb image={item.image?.url} name={item.name} category={item.category} />
-                      <span className="pcard-text">
-                        <span className="pcard-name">{item.name}</span>
-                        <span className="pcard-sub">
-                          {[item.sizes.length ? item.sizes.slice(0, 5).join(' · ') + (item.sizes.length > 5 ? ' …' : '') : null,
-                            item.colors.length ? `${item.colors.length} colour${item.colors.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="pcard-foot">
-                      <span className="pcard-price">{item.minPrice !== item.maxPrice && <small>from </small>}{fmt(item.minPrice)}</span>
-                      {count > 0 ? <span className="pcard-stock incart">{count} in sale</span>
-                        : <span className={`pcard-stock${item.stock <= 0 ? ' out' : ''}`}>{item.stock <= 0 ? 'Sold out' : `${qtyFmt(item.stock)} left`}</span>}
-                    </span>
-                  </button>
-                </li>
-              );
-            }
-            const p = item.product;
-            const line = inCart.get(p._id);
-            const packed = p.unitsPerPack > 1 && p.stock >= p.unitsPerPack;
-            return (
-              <li key={p._id} className={`pcard${line ? ' in-cart' : ''}${p.stock <= 0 ? ' out' : ''}`}>
-                <button className="pcard-main" disabled={p.stock <= 0} onClick={() => add(p)}>
-                  <span className="pcard-top">
-                    <Thumb image={p.image?.url} name={p.name} category={p.category} />
-                    <span className="pcard-text">
-                      <span className="pcard-name">{p.name}</span>
-                      <span className="pcard-sub">{[p.size, p.color].filter(Boolean).join(' · ') || (p.unitsPerPack > 1 ? `${p.unitsPerPack} per ${packName(p)}` : p.category || '')}</span>
-                    </span>
-                  </span>
-                  <span className="pcard-foot">
-                    <span className="pcard-price">{packed ? <>{fmt(packPriceFor(p))}<small> /{packName(p)}</small></> : fmt(priceOf(p))}</span>
-                    <span className={`pcard-stock${p.stock <= 0 ? ' out' : p.stock <= p.reorderLevel ? ' low' : ''}`}>{p.stock <= 0 ? 'Out' : `${qtyFmt(p.stock)} left`}</span>
-                  </span>
-                </button>
-                {line && (
-                  <div className="pcard-qty" aria-label={`${productLabel(p)} in cart`}>
-                    <button onClick={() => step(p._id, -1)} aria-label="One less"><Minus size={15} /></button>
-                    <span>{qtyFmt(line.qty)}{line.unit === 'pack' ? ` ${packName(p)}` : ''}</span>
-                    <button onClick={() => step(p._id, 1)} aria-label="One more"><Plus size={15} /></button>
-                  </div>
-                )}
-              </li>
-            );
-          })}
+        <ul className={`plist ${shownView === 'list' ? 'as-list' : 'as-grid'}`}>
+          {tiles.map((t) => (shownView === 'list' ? (
+            <li key={t.key} className={`prow${t.line || t.count ? ' in-cart' : ''}${t.disabled ? ' out' : ''}`}>
+              <button className="prow-main" disabled={t.disabled} onClick={t.onClick}>
+                <Thumb image={t.image} name={t.name} category={t.category} small />
+                <span className="prow-text"><span className="prow-name">{t.name}</span>{t.sub && <span className="prow-sub">{t.sub}</span>}</span>
+                <span className={`pcard-stock${t.stockClass}`}>{t.stockText}</span>
+                <span className="prow-price">{t.price}</span>
+              </button>
+              {t.line ? (
+                <div className="prow-qty" aria-label={`${t.name} in cart`}>
+                  <button onClick={() => step(t.id, -1)} aria-label="One less"><Minus size={15} /></button>
+                  <span>{t.line}</span>
+                  <button onClick={() => step(t.id, 1)} aria-label="One more"><Plus size={15} /></button>
+                </div>
+              ) : (
+                <button className="prow-add" disabled={t.disabled} onClick={t.onClick} aria-label={`Add ${t.name}`}><Plus size={18} /></button>
+              )}
+            </li>
+          ) : (
+            <li key={t.key} className={`pcard${t.line || t.count ? ' in-cart' : ''}${t.disabled ? ' out' : ''}`}>
+              <button className="pcard-main" disabled={t.disabled} onClick={t.onClick}>
+                <span className="pcard-photo"><Thumb image={t.image} name={t.name} category={t.category} large /><span className={`pcard-stock${t.stockClass}`}>{t.stockText}</span></span>
+                <span className="pcard-name">{t.name}</span>
+                <span className="pcard-sub">{t.sub || '\u00a0'}</span>
+                <span className="pcard-price">{t.price}</span>
+              </button>
+              {t.line && (
+                <div className="pcard-qty" aria-label={`${t.name} in cart`}>
+                  <button onClick={() => step(t.id, -1)} aria-label="One less"><Minus size={15} /></button>
+                  <span>{t.line}</span>
+                  <button onClick={() => step(t.id, 1)} aria-label="One more"><Plus size={15} /></button>
+                </div>
+              )}
+            </li>
+          )))}
           {results.length === 0 && (
             <li className="plist-empty">{q ? `No products match "${q}".` : 'No products in this category.'}</li>
           )}
