@@ -119,3 +119,28 @@ To show Posify to a client, set `SEED_DEMO` on the server and restart:
 
 Two demo cashiers (`ama.demo`, `kojo.demo`) are added so reports show sales by person; reset their passwords on the
 Users page if you want to sign in as them. The shop's owner account and password are not changed.
+
+## Deploy on cPanel
+
+Needs a cPanel host with **Setup Node.js App** (CloudLinux / Passenger) and Node 18 or newer. The database stays on
+MongoDB Atlas: ask the host to allow outgoing connections to port 27017 if the server cannot connect.
+
+Use two addresses: the website on `yourdomain.com` and the server on `api.yourdomain.com` (a subdomain).
+
+**Server (api.yourdomain.com)**
+1. cPanel > Domains: create the subdomain `api.yourdomain.com`; turn on SSL (AutoSSL).
+2. cPanel > Git Version Control > Create: clone `https://github.com/agyinjohn/posify.git` into e.g. `/home/USER/posify`
+   (a private repo needs a deploy key or token).
+3. cPanel > Setup Node.js App > Create Application: Node 18+, mode Production, Application root `posify/server`,
+   Application URL `api.yourdomain.com`, Application startup file `app.cjs`.
+4. Add the environment variables (`MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN=https://yourdomain.com`, `TRUST_PROXY=1`,
+   and the optional ones from `server/.env.example`), Save, then "Run NPM Install", then Restart.
+5. Check `https://api.yourdomain.com/api/health` shows `{"ok":true}`.
+
+**Website (yourdomain.com)**
+1. On your computer: `cd client && npm install`, then build with the server address:
+   `VITE_API_URL=https://api.yourdomain.com/api npm run build` (Windows PowerShell: `$env:VITE_API_URL="https://api.yourdomain.com/api"; npm run build`).
+2. Upload everything inside `client/dist` (including the hidden `.htaccess`) to `public_html` with File Manager or FTP.
+
+**Updating:** Git Version Control > Manage > Update from Remote, then Setup Node.js App > Restart for the server;
+rebuild and re-upload `client/dist` for the website.
