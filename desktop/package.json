@@ -76,7 +76,7 @@
       ],
       "category": "Office",
       "icon": "build/icon.png",
-      "maintainer": "Posify",
+      "maintainer": "Posify <agyinjohn@users.noreply.github.com>",
       "artifactName": "Posify-${version}.${ext}"
     },
     "publish": {
@@ -86,5 +86,9 @@
       "releaseType": "release"
     }
   },
-  "author": "GThink Group"
+  "author": {
+    "name": "Posify",
+    "email": "agyinjohn@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/agyinjohn/posify"
 }
