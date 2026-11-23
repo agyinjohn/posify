@@ -10,7 +10,6 @@ import { useAuth } from '../auth.jsx';
 import { RefreshIndicator, TableSkeleton, useToast } from '../ui.jsx';
 import { fmt, qtyFmt, todayStr } from '../format.js';
 import { SERIES_1, hourLabel, theme } from './ReportsOverview.jsx';
-import DemoDataModal from '../DemoData.jsx';
 
 /**
  * Owner's home page: the period's money in summary cards (compared with the period before), a sales chart,
@@ -88,7 +87,6 @@ export default function Dashboard() {
   const [d, setD] = useState(() => cacheGet(keyFor(range)) ?? undefined);
   const [refreshing, setRefreshing] = useState(false);
   const [hideAlert, setHideAlert] = useState(false);
-  const [demo, setDemo] = useState(false);
 
   useEffect(() => {
     setD((cur) => cacheGet(keyFor(range)) ?? (cur?.from === range.from && cur?.to === range.to ? cur : undefined));
@@ -131,11 +129,10 @@ export default function Dashboard() {
               <div className="dash-welcome">
                 <div>
                   <strong>Your shop is empty</strong>
-                  <span>Add your products on the Products page, or load demo data to try every screen first.</span>
+                  <span>Add your products on the Products page, one at a time or from a spreadsheet with Import.</span>
                 </div>
                 <div className="dash-welcome-actions">
                   <Link className="btn-light" to="/products">Add products</Link>
-                  <button className="primary" onClick={() => setDemo(true)}>Load demo data</button>
                 </div>
               </div>
             )}
@@ -261,7 +258,6 @@ export default function Dashboard() {
           </>
         )}
       </div>
-      {demo && <DemoDataModal onClose={() => setDemo(false)} />}
     </ThemeProvider>
   );
 }

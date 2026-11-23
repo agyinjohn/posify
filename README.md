@@ -123,20 +123,6 @@ Without them the app works normally and the image upload button shows a "not set
 - **Dates use UTC days** (Ghana is GMT year-round). Change `dayRange` in `server/src/lib/validate.js` if the shop is elsewhere.
 - Tests: `cd server && npm test` (pricing and payment logic).
 
-## Demo data
-
-To show Posify to a client, set `SEED_DEMO` on the server and restart:
-
-- `SEED_DEMO=1` fills the shop named in `SEED_DEMO_SHOP` (default `My shop`) with about 30 products (provisions,
-  drinks, toiletries, and clothes in sizes and colours), 8 customers, 4 suppliers and six weeks of sales, including
-  carton sales, credit sales, debt payments, a few returns and voids. It only runs if that shop has no products and
-  no sales yet, so it is safe to leave set.
-- `SEED_DEMO=reset` first wipes that shop's products, customers, suppliers and sales, then seeds fresh data. It does
-  this on **every restart**, so remove it once the demo is set up.
-
-Two demo cashiers (`ama.demo`, `kojo.demo`) are added so reports show sales by person; reset their passwords on the
-Users page if you want to sign in as them. The shop's owner account and password are not changed.
-
 ## Deploy on cPanel
 
 Needs a cPanel host with **Setup Node.js App** (CloudLinux / Passenger) and Node 18 or newer. The database stays on
