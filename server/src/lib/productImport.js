@@ -1,3 +1,5 @@
+import { SaleError } from './pricing.js';
+import { newBarcode } from './barcodes.js';
 import { productLabel } from './productLabel.js';
 import { r6 } from './money.js';
 
@@ -155,7 +157,9 @@ const slug = (s) => String(s).toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(
  * ({ _id, sku, barcode }). mode 'skip' leaves existing SKUs alone, 'update' changes their details and prices
  * (never their stock).
  */
-export function planImport({ rows, existingBySku, existingByBarcode, mode }) {
+export function planImport({ rows, existingBySku, existingByBarcode, mode, takenBarcodes, rand }) {
+  // Every barcode already in the shop or in this file; new products without one get a shop barcode (lib/barcodes.js).
+  const taken = new Set([...(takenBarcodes || []), ...existingByBarcode.keys(), ...rows.map((r) => r.data?.barcode).filter(Boolean)]);
   const skus = new Map();     // sku -> first row number in this file
   const barcodes = new Map(); // barcode -> sku of the row that claimed it
   const usedSkus = (s) => skus.has(s) || existingBySku.has(s);
@@ -193,6 +197,7 @@ export function planImport({ rows, existingBySku, existingByBarcode, mode }) {
         entry.warnings.push('SKU already exists: skipped');
       }
     }
+    if (entry.status === 'create' && !data.barcode) { data.barcode = newBarcode(taken, rand); entry.generatedBarcode = true; }
     return entry;
   });
 }
@@ -264,4 +269,29 @@ export async function applyPlan({ plan, Product, StockMovement, userId, newId })
     updates.forEach((e, i) => results.set(e.row, failed.has(i) ? { ok: false, message: failed.get(i) } : { ok: true }));
   }
   return results;
+}
+
+/**
+ * Reads what the shop already has and plans the import (used by the Import screen and by npm run import-products).
+ * Must run inside the shop (runAsShop / a signed-in request). Throws SaleError when there is no name column.
+ */
+export async function buildImportPlan({ Product, headers, rows, mode = 'skip' }) {
+  const { map, recognized, ignored } = mapHeaders(headers);
+  if (![...map.values()].includes('name')) throw new SaleError('No "name" column found. The first row must contain titles like name, sku, cost, price');
+
+  const normalized = rows.map((cells, i) => ({ row: i + 2, ...normalizeRow(cells, map) })); // row 1 is the titles
+  const skus = normalized.map((r) => r.data.sku).filter(Boolean);
+  const barcodes = normalized.map((r) => r.data.barcode).filter(Boolean);
+  const existing = await Product.find({ $or: [{ sku: { $in: skus } }, { barcode: { $in: barcodes } }] }).select('sku barcode').lean();
+  const existingBySku = new Map(existing.map((p) => [p.sku, p]));
+  const existingByBarcode = new Map(existing.filter((p) => p.barcode).map((p) => [p.barcode, p]));
+  // Generated SKUs and barcodes (blank in the sheet) must not collide with anything already in the shop either.
+  let takenBarcodes = [];
+  if (normalized.some((r) => (!r.data.sku || !r.data.barcode) && !r.errors.length)) {
+    const all = await Product.find({}).select('sku barcode').lean();
+    all.forEach((p) => { if (!existingBySku.has(p.sku)) existingBySku.set(p.sku, p); });
+    takenBarcodes = all.map((p) => p.barcode).filter(Boolean);
+  }
+  const plan = planImport({ rows: normalized, existingBySku, existingByBarcode, mode, takenBarcodes });
+  return { plan, recognized, ignored };
 }

@@ -14,9 +14,13 @@ test('labels show size and colour', () => {
 
 test('one product per combination, with SKUs made from the name, size and colour', () => {
   const out = planVariants({ base, combos: [{ size: 'M', color: 'Red', stock: 3 }, { size: 'L', color: 'Red' }, { size: 'M', color: 'Navy blue', barcode: '123' }] });
-  assert.deepEqual(out.map((p) => [p.sku, p.size, p.color, p.stock, p.barcode]), [
-    ['KENTE-DRESS-M-RED', 'M', 'Red', 3, undefined], ['KENTE-DRESS-L-RED', 'L', 'Red', 0, undefined], ['KENTE-DRESS-M-NAVY-BLUE', 'M', 'Navy blue', 0, '123'],
+  assert.deepEqual(out.map((p) => [p.sku, p.size, p.color, p.stock]), [
+    ['KENTE-DRESS-M-RED', 'M', 'Red', 3], ['KENTE-DRESS-L-RED', 'L', 'Red', 0], ['KENTE-DRESS-M-NAVY-BLUE', 'M', 'Navy blue', 0],
   ]);
+  assert.match(out[0].barcode, /^2\d{12}$/); // made by the shop
+  assert.match(out[1].barcode, /^2\d{12}$/);
+  assert.notEqual(out[0].barcode, out[1].barcode);
+  assert.equal(out[2].barcode, '123'); // the maker's barcode is kept
   assert.equal(out[0].retailPrice, 150);
   assert.equal(out[0].category, 'Dresses');
 });

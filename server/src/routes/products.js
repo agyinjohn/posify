@@ -12,7 +12,8 @@ import { audit } from '../lib/audit.js';
 import { productLabel } from '../lib/productLabel.js';
 import mongoose from 'mongoose';
 import { planVariants, comboKey } from '../lib/variants.js';
-import { mapHeaders, normalizeRow, planImport, summarize, applyPlan } from '../lib/productImport.js';
+import { buildImportPlan, summarize, applyPlan } from '../lib/productImport.js';
+import { fillBarcodes, newBarcode } from '../lib/barcodes.js';
 
 const router = Router();
 const FIELDS = ['name', 'size', 'color', 'sku', 'barcode', 'category', 'costPrice', 'retailPrice', 'wholesalePrice', 'packRetailPrice', 'packWholesalePrice', 'reorderLevel', 'unitsPerPack', 'packLabel'];
@@ -56,26 +57,10 @@ router.post('/import', requireAuth, requireOwner, asyncHandler(async (req, res) 
   if (!['skip', 'update'].includes(mode)) throw new SaleError('Invalid import mode');
   if (!rows.every((r) => Array.isArray(r) && r.length <= 80 && r.every((c) => c === null || ['string', 'number'].includes(typeof c) && String(c).length < 300))) throw new SaleError('The file has an unreadable row');
 
-  const { map, recognized, ignored } = mapHeaders(headers);
-  if (![...map.values()].includes('name')) throw new SaleError('No "name" column found. The first row must contain titles like name, sku, cost, price');
-
-  const normalized = rows.map((cells, i) => ({ row: i + 2, ...normalizeRow(cells, map) })); // row 1 is the titles
-  const skus = normalized.map((r) => r.data.sku).filter(Boolean);
-  const barcodes = normalized.map((r) => r.data.barcode).filter(Boolean);
-  const existing = await Product.find({ $or: [{ sku: { $in: skus } }, { barcode: { $in: barcodes } }] }).select('sku barcode').lean();
-  const existingBySku = new Map(existing.map((p) => [p.sku, p]));
-  const existingByBarcode = new Map(existing.filter((p) => p.barcode).map((p) => [p.barcode, p]));
-  // Generated SKUs (blank in the sheet) must not collide with anything already in the shop either.
-  const needGenerated = normalized.some((r) => !r.data.sku && !r.errors.length);
-  if (needGenerated) {
-    const all = await Product.find({}).select('sku').lean();
-    all.forEach((p) => { if (!existingBySku.has(p.sku)) existingBySku.set(p.sku, p); });
-  }
-
-  const plan = planImport({ rows: normalized, existingBySku, existingByBarcode, mode });
+  const { plan, recognized, ignored } = await buildImportPlan({ Product, headers, rows, mode });
   const summary = summarize(plan);
   const view = plan.map((e) => ({ row: e.row, status: e.status, name: e.name, sku: e.sku, errors: e.errors, warnings: e.warnings,
-    prices: { cost: e.data.costPrice, retail: e.data.retailPrice, packRetail: e.data.packRetailPrice, units: e.data.unitsPerPack, stock: e.data.stock } }));
+    barcode: e.data.barcode, prices: { cost: e.data.costPrice, retail: e.data.retailPrice, packRetail: e.data.packRetailPrice, units: e.data.unitsPerPack, stock: e.data.stock } }));
   if (dryRun) return res.json({ dryRun: true, mode, columns: { recognized, ignored }, summary, rows: view });
 
   const results = await applyPlan({ plan, Product, StockMovement, userId: req.user._id, newId: () => new mongoose.Types.ObjectId() });
@@ -94,10 +79,31 @@ router.post('/import', requireAuth, requireOwner, asyncHandler(async (req, res) 
   res.json({ dryRun: false, mode, summary: result, rows: done });
 }));
 
+// A shop barcode no product in this shop uses yet.
+async function freeBarcode() {
+  for (let i = 0; i < 5; i += 1) {
+    const code = newBarcode();
+    if (!(await Product.exists({ barcode: code }))) return code;
+  }
+  throw new SaleError('Could not make a barcode. Try again', 409);
+}
+
+// Give every product that has no barcode (added before barcodes were automatic) a shop barcode.
+router.post('/fill-barcodes', requireAuth, requireOwner, asyncHandler(async (req, res) => {
+  const all = await Product.find({}).select('barcode').lean();
+  const missing = all.filter((p) => !p.barcode);
+  fillBarcodes(missing, new Set(all.map((p) => p.barcode).filter(Boolean)));
+  if (missing.length) {
+    await Product.bulkWrite(missing.map((p) => ({ updateOne: { filter: { _id: p._id, barcode: { $exists: false } }, update: { $set: { barcode: p.barcode } } } })), { ordered: false });
+    audit({ req, action: 'product.edit', target: `Barcodes made for ${missing.length} products`, detail: { count: missing.length } });
+  }
+  res.json({ filled: missing.length });
+}));
+
 router.post('/', requireAuth, requireOwner, asyncHandler(async (req, res) => {
   const data = pick(req.body, FIELDS);
   dropPackPricesIfNoPack(data);
-  if (!data.barcode) delete data.barcode;
+  if (!data.barcode) data.barcode = await freeBarcode();
   const opening = Number(req.body.stock) || 0;
   if (opening < 0) throw new SaleError('Opening stock cannot be negative');
   const product = await Product.create({ ...data, stock: opening });
@@ -145,11 +151,9 @@ router.patch('/:id', requireAuth, requireOwner, asyncHandler(async (req, res) =>
   assertId(req.params.id);
   const set = pick(req.body, [...FIELDS, 'active']); // stock is deliberately not editable here
   dropPackPricesIfNoPack(set);
+  // A cleared barcode is replaced with a new shop barcode: every product keeps one to scan and print.
+  if (set.barcode === '' || set.barcode === null) set.barcode = await freeBarcode();
   const update = { $set: set };
-  if (set.barcode === '' || set.barcode === null) {
-    delete set.barcode;
-    update.$unset = { barcode: '' };
-  }
   const product = await Product.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
   if (!product) return res.status(404).json({ error: 'Product not found' });
   // Log price changes explicitly so they are easy to filter in the audit log.

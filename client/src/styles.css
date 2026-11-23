@@ -1321,3 +1321,6 @@ tr.clickable { cursor: pointer; }
 .lp-row-price input { width: 14px; height: 14px; min-height: 0; margin: 0; }
 .lp-row-price.on { border-color: #B7DFC8; background: #E4F4EA; color: #157347; }
 @media (max-width: 520px) { .lp-rows li { flex-wrap: wrap; } .lp-name { flex-basis: 100%; } }
+
+/* Products without a barcode yet */
+.barcode-missing { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .6rem .9rem; margin: 0 0 1rem; border-radius: 10px; background: #FFF6E5; color: #7A4B00; font-size: .9rem; border: 1px solid #F5DDAE; }

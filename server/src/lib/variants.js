@@ -1,5 +1,6 @@
 import { SaleError } from './pricing.js';
 import { productLabel } from './productLabel.js';
+import { newBarcode } from './barcodes.js';
 
 /**
  * Sizes and colours. Each size/colour combination is its own product (own SKU, barcode, stock and price), sharing the
@@ -16,7 +17,7 @@ export const comboKey = (name, size, color) => [name, size, color].map((v) => St
  * takenSkus / takenBarcodes: Sets already used in the shop. existing: Set of comboKey(name, size, color) already there.
  * Returns the product records to create; throws SaleError naming the first problem.
  */
-export function planVariants({ base, combos, takenSkus = new Set(), takenBarcodes = new Set(), existing = new Set() }) {
+export function planVariants({ base, combos, takenSkus = new Set(), takenBarcodes = new Set(), existing = new Set(), rand }) {
   const name = text(base?.name, 120);
   if (!name) throw new SaleError('Enter the product name');
   if (!Array.isArray(combos) || combos.length === 0) throw new SaleError('Add at least one size or colour');
@@ -24,7 +25,7 @@ export function planVariants({ base, combos, takenSkus = new Set(), takenBarcode
 
   const prefix = slug(text(base.sku, 40) || name).slice(0, 24) || 'ITEM';
   const skus = new Set(); const barcodes = new Set(); const seen = new Set();
-  return combos.map((c, i) => {
+  const docs = combos.map((c, i) => {
     const size = text(c?.size, 30); const color = text(c?.color, 30);
     const label = productLabel({ name, size, color });
     if (!size && !color) throw new SaleError(`Line ${i + 1}: give a size or a colour`);
@@ -51,4 +52,8 @@ export function planVariants({ base, combos, takenSkus = new Set(), takenBarcode
     if (!Number.isFinite(stock) || stock < 0 || stock > 1e6) throw new SaleError(`${label}: opening stock must be 0 or more`);
     return { ...base, name, size, color, sku, barcode, stock };
   });
+  // Sizes/colours given without a barcode get a shop barcode, avoiding every one already used.
+  const taken = new Set([...takenBarcodes, ...barcodes]);
+  docs.forEach((d) => { if (!d.barcode) d.barcode = newBarcode(taken, rand); });
+  return docs;
 }
