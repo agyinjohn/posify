@@ -38,11 +38,12 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Default web address
-        if: ${{ github.event.inputs.url != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.url != '' }}
         shell: bash
         env:
           POSIFY_URL: ${{ github.event.inputs.url }}
-        run: node -e "require('fs').writeFileSync('config.default.json', JSON.stringify({ url: process.env.POSIFY_URL }) + '\n')"
+        run: |
+          node -e "require('fs').writeFileSync('config.default.json', JSON.stringify({ url: process.env.POSIFY_URL }) + '\n')"
 
       - name: Build installers
         shell: bash

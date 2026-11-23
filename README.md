@@ -65,6 +65,15 @@ Products page, then **Import**. Download the template, fill it in (one product p
 - Nothing is saved until you press Import: first every row is checked and you see what will be added, updated, skipped or needs fixing.
 - Same SKU already in the shop: skip it, or update its details and prices (stock is never changed by an update). No SKU: one is made from the barcode or the name.
 - Opening stock (in pieces or in packs) is recorded as an opening stock movement. Up to 2000 rows per file.
+- No barcode: Posify makes one (13 digits starting with 2, the range kept for a shop's own codes, so it never clashes with a maker's barcode). The same happens when a product is added or its barcode is cleared, and **Make barcodes** on the Products page fills in any older products without one.
+
+**Loading a file for a client from the server** (no need to sign in as them), same rules as the Import screen:
+
+```bash
+npm run import-products -- --shop "Client shop name" --file products.csv           # check only
+npm run import-products -- --shop "Client shop name" --file products.csv --apply   # import
+```
+Add `--update` to update products whose SKU already exists instead of skipping them. On cPanel, run it inside the app's virtual environment from the app folder.
 
 ## Passwords
 

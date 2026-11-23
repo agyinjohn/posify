@@ -189,7 +189,7 @@ test('an optional size column is kept as a label, and shapes generated SKUs', ()
   assert.equal(updateFields(rows[0].data).size, 'Small');
 });
 
-test('a blank barcode is "no barcode", so many products without barcodes can be imported', async () => {
+test('a blank barcode is never stored as empty: each new product gets its own shop barcode', async () => {
   const m = mapHeaders(['Name', 'Barcode', 'Price']).map;
   const rows = ['A', 'B', 'C'].map((n, i) => ({ row: i + 2, ...normalizeRow([n, '  ', '5'], m) }));
   rows.forEach((r) => assert.equal(r.data.barcode, undefined));
@@ -198,7 +198,8 @@ test('a blank barcode is "no barcode", so many products without barcodes can be 
   const written = [];
   const Product = { async bulkWrite(ops) { written.push(...ops.map((o) => o.insertOne.document)); } };
   await applyPlan({ plan, Product, StockMovement: { insertMany: async () => {} }, userId: 'u', newId: () => 'x' });
-  assert.ok(written.every((d) => d.barcode === undefined), 'no product is written with an empty barcode');
+  assert.ok(written.every((d) => /^2\d{12}$/.test(d.barcode)), 'every product gets a shop barcode');
+  assert.equal(new Set(written.map((d) => d.barcode)).size, 3, 'all different');
 });
 
 test('opening stock given in packs and loose pieces is added together, with a note', () => {

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { priceSale, settlePayments } from './pricing.js';
 import { planReturn } from './returns.js';
 import { r2, r3 } from './money.js';
+import { ean13 } from './barcodes.js';
 
 /**
  * Demo data for a sales demo: a Ghanaian mini-mart with a small clothing corner, about six weeks of trading.
@@ -73,7 +74,7 @@ export function buildDemoData({ now = new Date(), days = 42, seed = 20261118, ow
   const products = CATALOGUE.map(([name, size, color, category, cost, price, units, packLabel, packPrice, weight, left], i) => ({
     _id: oid(), name, size, color, category, costPrice: cost, retailPrice: price, unitsPerPack: units, packLabel,
     packRetailPrice: units > 1 ? packPrice : 0, wholesalePrice: 0, packWholesalePrice: 0, reorderLevel: units > 1 ? units : 3,
-    sku: `DEMO-${String(i + 1).padStart(3, '0')}`, active: true, stock: 0, weight, left, createdAt: start, updatedAt: start,
+    sku: `DEMO-${String(i + 1).padStart(3, '0')}`, barcode: ean13(`2990000${String(i + 1).padStart(5, '0')}`), active: true, stock: 0, weight, left, createdAt: start, updatedAt: start,
   }));
   const byId = new Map(products.map((p) => [String(p._id), p]));
   const pool = products.flatMap((p) => Array(p.weight).fill(p)); // popular products come up more often

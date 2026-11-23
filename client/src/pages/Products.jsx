@@ -90,6 +90,7 @@ export default function Products() {
     return (
       <div className="page page-wide">
         <RefreshIndicator refreshing={refreshing} />
+        <MissingBarcodes list={list} onDone={load} />
         <div className="stat-row">
           <div className="stat-chip"><span>Products</span><strong>{list.length}</strong></div>
           <div className="stat-chip warn"><span>Low or out</span><strong>{lowCount}</strong></div>
@@ -124,6 +125,7 @@ export default function Products() {
   return (
     <div className="page">
       <RefreshIndicator refreshing={refreshing} />
+      <MissingBarcodes list={list} onDone={load} />
       <div className="page-toolbar">
         <div className="page-toolbar-left">
           <input className="search" placeholder="Search name, SKU or barcode" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -486,7 +488,7 @@ function ProductForm({ p, sizes = COMMON_SIZES, colors = COMMON_COLORS, onClose,
         <Field label={multi ? 'SKU start (optional)' : 'SKU'} hint={multi ? 'Each size/colour gets its own code, e.g. DRESS-M-RED' : 'Short unique code to identify this product, e.g. RICE-5KG'}>
           <input value={f.sku} onChange={set('sku')} required={!multi} />
         </Field>
-        {!multi && <Field label="Barcode" hint="Scan it here, or leave blank"><input value={f.barcode} onChange={set('barcode')} /></Field>}
+        {!multi && <Field label="Barcode" hint="Scan the maker's barcode, or leave blank and Posify makes one"><input value={f.barcode} onChange={set('barcode')} /></Field>}
         <Field label="Category"><input value={f.category} onChange={set('category')} /></Field>
 
         {/* Pack size first, so the price fields below know what a pack is */}
@@ -558,5 +560,27 @@ function ProductForm({ p, sizes = COMMON_SIZES, colors = COMMON_COLORS, onClose,
       </form>
       {!isNew && <p className="hint">Stock changes go through the Stock page so every change has a record.</p>}
     </Modal>
+  );
+}
+
+// Products added before barcodes were made automatically: one click gives them all a shop barcode.
+function MissingBarcodes({ list, onDone }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const missing = list.filter((p) => !p.barcode).length;
+  if (!missing) return null;
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await api('/products/fill-barcodes', { method: 'POST' });
+      cacheInvalidatePrefix('/products'); toast(`Barcodes made for ${r.filled} product${r.filled === 1 ? '' : 's'}`); onDone();
+    } catch (e) { toast(e.message, 'err'); }
+    setBusy(false);
+  };
+  return (
+    <div className="barcode-missing" role="status">
+      <span>{missing} product{missing === 1 ? ' has' : 's have'} no barcode yet.</span>
+      <button className="primary" disabled={busy} onClick={run}>{busy ? 'Making barcodes\u2026' : 'Make barcodes'}</button>
+    </div>
   );
 }
